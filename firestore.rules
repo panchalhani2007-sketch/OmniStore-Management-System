@@ -1,0 +1,135 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isActiveUser() {
+      return isSignedIn() && (
+        request.auth.token.email == 'panchalhani2007@gmail.com' ||
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'inactive'
+      );
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'panchalhani2007@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'inactive')
+      );
+    }
+
+    function isManager() {
+      return isSuperAdmin() || (
+        isActiveUser() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager']
+      );
+    }
+
+    function isStaff() {
+      return isActiveUser();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Connection test document
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+      allow update: if isSignedIn() && (
+        isSuperAdmin() ||
+        (isOwner(userId) &&
+         request.resource.data.role == resource.data.role &&
+         request.resource.data.status == resource.data.status)
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+    // Products collection
+    match /products/{productId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
+    }
+
+    // Categories collection
+    match /categories/{categoryId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    // Customers collection
+    match /customers/{customerId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
+    }
+
+    // Suppliers collection
+    match /suppliers/{supplierId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
+    }
+
+    // Sales collection
+    match /sales/{saleId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if isManager();
+    }
+
+    // Purchases collection
+    match /purchases/{purchaseId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isManager();
+    }
+
+    // Returns collection
+    match /returns/{returnId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if isManager();
+    }
+
+    // Expenses collection
+    match /expenses/{expenseId} {
+      allow read: if isStaff();
+      allow create, update: if isManager();
+      allow delete: if isManager();
+    }
+
+    // Stock movement logs
+    match /stock_logs/{logId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if isSuperAdmin();
+    }
+
+    // Store settings
+    match /store_settings/{settingId} {
+      allow read: if isStaff();
+      allow write: if isManager();
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "OmniStore POS & Inventory Management",
+  "description": "Comprehensive dynamic Store Management System with real-time Firestore database, multi-role access control, inventory tracking, POS billing, returns, expenses, customers, and suppliers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

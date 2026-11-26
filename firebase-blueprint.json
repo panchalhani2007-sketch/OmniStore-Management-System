@@ -1,0 +1,240 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role-based access control",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "manager", "billing", "inventory"] },
+        "phone": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["email", "name", "role", "status"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Product categories in the store",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "code": { "type": "string" },
+        "color": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "code"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Store items and inventory counts",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "barcode": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "categoryName": { "type": "string" },
+        "costPrice": { "type": "number" },
+        "sellingPrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "minStockAlert": { "type": "number" },
+        "unit": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "archived"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "sku", "costPrice", "sellingPrice", "stock", "minStockAlert"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Registered store customers and purchase metrics",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "totalPurchases": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Vendor and supplier directory",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "suppliedCategories": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Completed POS sales transaction with items and payment details",
+      "type": "object",
+      "properties": {
+        "saleNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "subtotal": { "type": "number" },
+        "taxRate": { "type": "number" },
+        "taxAmount": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "grandTotal": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "paymentStatus": { "type": "string" },
+        "cashierId": { "type": "string" },
+        "cashierName": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["saleNumber", "grandTotal", "paymentMethod", "paymentStatus"]
+    },
+    "Purchase": {
+      "title": "Purchase",
+      "description": "Inventory purchase order from supplier",
+      "type": "object",
+      "properties": {
+        "purchaseNumber": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "paymentStatus": { "type": "string" },
+        "receivedStatus": { "type": "string" },
+        "receivedDate": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["purchaseNumber", "supplierName", "totalAmount"]
+    },
+    "Return": {
+      "title": "Return",
+      "description": "Customer return records with stock restock status",
+      "type": "object",
+      "properties": {
+        "returnNumber": { "type": "string" },
+        "saleId": { "type": "string" },
+        "saleNumber": { "type": "string" },
+        "customerName": { "type": "string" },
+        "totalRefund": { "type": "number" },
+        "reason": { "type": "string" },
+        "processedBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["returnNumber", "totalRefund", "reason"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Operational expenses of the store",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "reference": { "type": "string" },
+        "notes": { "type": "string" },
+        "date": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "category", "amount"]
+    },
+    "StockLog": {
+      "title": "StockLog",
+      "description": "Audit trail of inventory movements",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "previousStock": { "type": "number" },
+        "change": { "type": "number" },
+        "newStock": { "type": "number" },
+        "reason": { "type": "string" },
+        "type": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["productId", "change", "newStock", "reason"]
+    },
+    "StoreSettings": {
+      "title": "StoreSettings",
+      "description": "Store configuration, currency, tax and metadata",
+      "type": "object",
+      "properties": {
+        "storeName": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "currencySymbol": { "type": "string" },
+        "taxRate": { "type": "number" },
+        "receiptFooter": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["storeName", "currencySymbol"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles with role assignment"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Product category taxonomy"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Inventory products catalogue"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customer CRM records"
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Supplier contacts and vendor records"
+    },
+    "/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Sales invoices and receipts"
+    },
+    "/purchases/{purchaseId}": {
+      "schema": "Purchase",
+      "description": "Purchase orders and incoming stock records"
+    },
+    "/returns/{returnId}": {
+      "schema": "Return",
+      "description": "Product return and refund records"
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Store operations expenses"
+    },
+    "/stock_logs/{logId}": {
+      "schema": "StockLog",
+      "description": "Inventory movement audit trails"
+    },
+    "/store_settings/{settingId}": {
+      "schema": "StoreSettings",
+      "description": "Global store configuration and defaults"
+    }
+  }
+}
