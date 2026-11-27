@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   UserPlus, 
   CheckCircle2, 
@@ -13,7 +13,13 @@ import {
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
-import { UserProfile, UserRole, ROLE_PERMISSIONS } from '../types/store';
+import {
+  MAX_ADMIN_ACCOUNTS,
+  MAX_MANAGER_ACCOUNTS,
+  ROLE_PERMISSIONS,
+  UserProfile,
+  UserRole
+} from '../types/store';
 
 export const EmployeesView: React.FC = () => {
   const { employees } = useStore();
@@ -21,10 +27,14 @@ export const EmployeesView: React.FC = () => {
     user, 
     profile, 
     role, 
+    isAuthorizedAdmin,
+    adminClaimedAt,
     createStaffAccount, 
     updateUserRole, 
     updateStaffMember, 
-    deleteStaffProfile 
+    deleteStaffProfile,
+    syncManagerSlots,
+    cleanupPreResetAdminManagers
   } = useAuth();
 
   // Add Staff modal states
@@ -50,7 +60,42 @@ export const EmployeesView: React.FC = () => {
   const [pageError, setPageError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const canManageRoles = role === 'admin';
+  const canManageRoles = role === 'admin' && isAuthorizedAdmin;
+
+  // Detect any stale Admin/Manager docs created before the current Admin lock reset
+  const stalePreResetRecords = React.useMemo(() => {
+    if (!canManageRoles || !user?.uid) return [];
+    return employees.filter((e) => {
+      if (e.id === user.uid) return false;
+      if (e.role === 'admin') return true;
+      if (e.role === 'manager' && adminClaimedAt && (!e.createdAt || e.createdAt < adminClaimedAt)) {
+        return true;
+      }
+      return false;
+    });
+  }, [canManageRoles, employees, user?.uid, adminClaimedAt]);
+
+  useEffect(() => {
+    if (canManageRoles && employees.length > 0 && stalePreResetRecords.length === 0) {
+      syncManagerSlots();
+    }
+  }, [canManageRoles, employees.length, stalePreResetRecords.length]);
+
+  const managerCount = employees.filter((e) => e.role === 'manager').length;
+  const billingCount = employees.filter((e) => e.role === 'billing').length;
+  const isManagerLimitReached = managerCount >= MAX_MANAGER_ACCOUNTS;
+
+  const handleCleanupPreReset = async () => {
+    try {
+      setPageError(null);
+      await cleanupPreResetAdminManagers(stalePreResetRecords.map((r) => r.id));
+      setSuccess(
+        `Removed ${stalePreResetRecords.length} stale pre-reset Admin/Manager role record(s). Billing Staff and store data were preserved.`
+      );
+    } catch (err: unknown) {
+      setPageError(err instanceof Error ? err.message : 'Failed to clean up stale records');
+    }
+  };
 
   const handleRoleChange = async (targetUserId: string, updatedRole: UserRole) => {
     try {
@@ -81,7 +126,9 @@ export const EmployeesView: React.FC = () => {
     setEditingStaff(emp);
     setEditName(emp.name);
     setEditPhone(emp.phone || '');
-    setEditRole(emp.role);
+    const safeRole: UserRole =
+      emp.role === 'admin' && emp.id !== user?.uid ? 'billing' : emp.role;
+    setEditRole(safeRole);
     setEditStatus(emp.status || 'active');
     setError(null);
   };
@@ -96,10 +143,11 @@ export const EmployeesView: React.FC = () => {
     try {
       setIsSubmitting(true);
       setError(null);
+      const isTargetCurrentAdmin = editingStaff.id === user?.uid && isAuthorizedAdmin;
       await updateStaffMember(editingStaff.id, {
         name: editName.trim(),
         phone: editPhone.trim(),
-        role: editRole,
+        role: isTargetCurrentAdmin ? 'admin' : (editRole === 'admin' ? 'billing' : editRole),
         status: editingStaff.id === user?.uid ? 'active' : editStatus
       });
       setSuccess(`Updated staff profile for ${editName.trim()}.`);
@@ -166,6 +214,20 @@ export const EmployeesView: React.FC = () => {
 
   const displayEmployees = employees.length > 0 ? employees : (profile ? [profile] : []);
 
+  if (!canManageRoles) {
+    return (
+      <div className="p-8 rounded-2xl bg-slate-900 border border-rose-500/30 text-center space-y-3 max-w-lg mx-auto my-8">
+        <div className="w-12 h-12 rounded-2xl bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
+          <Shield className="w-6 h-6" />
+        </div>
+        <h3 className="text-lg font-bold text-white">Authorized Administrator Only</h3>
+        <p className="text-xs text-slate-400">
+          Access to Staff &amp; Role management is strictly restricted to the authorized store administrator account.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Top Header */}
@@ -173,7 +235,7 @@ export const EmployeesView: React.FC = () => {
         <div>
           <h2 className="text-xl font-bold text-white tracking-tight">Staff &amp; Role-Based Access (RBAC)</h2>
           <p className="text-xs text-slate-400">
-            Manage store employee accounts, status, and security permissions across Admin, Manager, Billing, and Inventory tiers
+            Manage store employee accounts, status, and security permissions across Admin (max 1), Manager (max 2), and Billing Staff (unlimited)
           </p>
         </div>
         {canManageRoles && (
@@ -210,6 +272,70 @@ export const EmployeesView: React.FC = () => {
           </button>
         </div>
       )}
+
+      {stalePreResetRecords.length > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="space-y-1">
+            <p className="font-semibold text-amber-300">
+              {stalePreResetRecords.length} Old Pre-Reset Admin/Manager Role Record(s) Found
+            </p>
+            <p className="text-amber-200/80">
+              {stalePreResetRecords.map((r) => `${r.email} (${r.role})`).join(', ')} — remove these stale records so your 2 Manager slots are free. Billing Staff and business data will not be touched.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCleanupPreReset}
+            className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold shrink-0 transition"
+          >
+            Clean Up Old Records
+          </button>
+        </div>
+      )}
+
+      {/* Role Capacity Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+          <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Admin Limit</span>
+            <span className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] font-semibold">
+              Locked (1 Max)
+            </span>
+          </div>
+          <div className="text-xl font-bold text-white font-mono">1 / {MAX_ADMIN_ACCOUNTS}</div>
+          <p className="text-[11px] text-slate-400 mt-0.5">Single authorized Store Administrator</p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+          <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Manager Accounts</span>
+            <span
+              className={`px-2 py-0.5 rounded-md border text-[10px] font-semibold ${
+                isManagerLimitReached
+                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+              }`}
+            >
+              {isManagerLimitReached ? 'Limit Reached (2/2)' : `${MAX_MANAGER_ACCOUNTS - managerCount} Slot Left`}
+            </span>
+          </div>
+          <div className="text-xl font-bold text-white font-mono">
+            {managerCount} / {MAX_MANAGER_ACCOUNTS}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-0.5">Inventory, Add Product &amp; Categories</p>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
+          <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">Billing Staff</span>
+            <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">
+              Unlimited
+            </span>
+          </div>
+          <div className="text-xl font-bold text-white font-mono">{billingCount} Active/Total</div>
+          <p className="text-[11px] text-slate-400 mt-0.5">POS Billing, Returns, Sales &amp; Customers</p>
+        </div>
+      </div>
 
       {/* Employees Directory Table */}
       <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800">
@@ -263,16 +389,16 @@ export const EmployeesView: React.FC = () => {
                       {emp.phone && <div className="text-[10px] text-slate-500 font-mono">{emp.phone}</div>}
                     </td>
                     <td className="py-3 px-3">
-                      {canManageRoles && !isCurrentUser ? (
+                      {canManageRoles && !isCurrentUser && emp.role !== 'admin' ? (
                         <select
-                          value={emp.role}
+                          value={emp.role === 'manager' ? 'manager' : 'billing'}
                           onChange={(e) => handleRoleChange(emp.id, e.target.value as UserRole)}
                           className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs focus:outline-hidden focus:border-indigo-500"
                         >
-                          <option value="admin">Admin</option>
-                          <option value="manager">Manager</option>
+                          <option value="manager" disabled={emp.role !== 'manager' && isManagerLimitReached}>
+                            Manager{emp.role !== 'manager' && isManagerLimitReached ? ' (Max 2 Reached)' : ''}
+                          </option>
                           <option value="billing">Billing Staff</option>
-                          <option value="inventory">Inventory Staff</option>
                         </select>
                       ) : (
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[11px] font-semibold ${roleConfig.color}`}>
@@ -355,73 +481,51 @@ export const EmployeesView: React.FC = () => {
             <thead className="bg-slate-800/60 text-slate-400 font-semibold border-b border-slate-800">
               <tr>
                 <th className="py-2.5 px-3">Capability / Operation</th>
-                <th className="py-2.5 px-3 text-center text-rose-400">Admin</th>
-                <th className="py-2.5 px-3 text-center text-indigo-400">Manager</th>
-                <th className="py-2.5 px-3 text-center text-emerald-400">Billing Staff</th>
-                <th className="py-2.5 px-3 text-center text-amber-400">Inventory Staff</th>
+                <th className="py-2.5 px-3 text-center text-rose-400">Admin (1 Max)</th>
+                <th className="py-2.5 px-3 text-center text-indigo-400">Manager (2 Max)</th>
+                <th className="py-2.5 px-3 text-center text-emerald-400">Billing Staff (Unlimited)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               <tr>
-                <td className="py-2.5 px-3 font-medium text-white">Full Store &amp; Financial Dashboard / Reports</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
+                <td className="py-2.5 px-3 font-medium text-white">POS Billing &amp; Sales Checkout</td>
                 <td className="py-2.5 px-3 text-center text-slate-600">—</td>
                 <td className="py-2.5 px-3 text-center text-slate-600">—</td>
-              </tr>
-              <tr>
-                <td className="py-2.5 px-3 font-medium text-white">POS Terminal &amp; Sales Checkout</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-slate-600">—</td>
-              </tr>
-              <tr>
-                <td className="py-2.5 px-3 font-medium text-white">Customer CRM &amp; History</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-slate-600">—</td>
-              </tr>
-              <tr>
-                <td className="py-2.5 px-3 font-medium text-white">Stock Level Lookup (Healthy / Low / Out of Stock)</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓ (View)</td>
                 <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
               </tr>
               <tr>
-                <td className="py-2.5 px-3 font-medium text-white">Adjust Stock &amp; Receive Purchases</td>
+                <td className="py-2.5 px-3 font-medium text-white">Return &amp; Refund Processing</td>
+                <td className="py-2.5 px-3 text-center text-slate-600">—</td>
+                <td className="py-2.5 px-3 text-center text-slate-600">—</td>
                 <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
+              </tr>
+              <tr>
+                <td className="py-2.5 px-3 font-medium text-white">Sales &amp; Receipts History</td>
                 <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
                 <td className="py-2.5 px-3 text-center text-slate-600">—</td>
                 <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
               </tr>
               <tr>
-                <td className="py-2.5 px-3 font-medium text-white">Process Customer Returns &amp; Restock</td>
+                <td className="py-2.5 px-3 font-medium text-white">Customers Management</td>
                 <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
+                <td className="py-2.5 px-3 text-center text-slate-600">—</td>
+                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
+              </tr>
+              <tr>
+                <td className="py-2.5 px-3 font-medium text-white">Inventory &amp; Stock Adjustments</td>
                 <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
                 <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
                 <td className="py-2.5 px-3 text-center text-slate-600">—</td>
               </tr>
               <tr>
-                <td className="py-2.5 px-3 font-medium text-white">Store Overhead &amp; Expense Logging</td>
+                <td className="py-2.5 px-3 font-medium text-white">Products / Add Product &amp; Categories</td>
                 <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
                 <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-slate-600">—</td>
                 <td className="py-2.5 px-3 text-center text-slate-600">—</td>
               </tr>
               <tr>
-                <td className="py-2.5 px-3 font-medium text-white">Employee Roster &amp; Role Management</td>
+                <td className="py-2.5 px-3 font-medium text-white">Staff &amp; Roles Management</td>
                 <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-slate-600">—</td>
-                <td className="py-2.5 px-3 text-center text-slate-600">—</td>
-                <td className="py-2.5 px-3 text-center text-slate-600">—</td>
-              </tr>
-              <tr>
-                <td className="py-2.5 px-3 font-medium text-white">Store Master Settings &amp; Tax Rate</td>
-                <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">✓</td>
-                <td className="py-2.5 px-3 text-center text-slate-600">—</td>
                 <td className="py-2.5 px-3 text-center text-slate-600">—</td>
                 <td className="py-2.5 px-3 text-center text-slate-600">—</td>
               </tr>
@@ -507,10 +611,10 @@ export const EmployeesView: React.FC = () => {
                   onChange={(e) => setNewRole(e.target.value as UserRole)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-hidden focus:border-indigo-500"
                 >
-                  <option value="admin">Admin (Full Control)</option>
-                  <option value="manager">Manager (Inventory, POS, Reports)</option>
-                  <option value="billing">Billing Staff (Cashier &amp; Sales)</option>
-                  <option value="inventory">Inventory Staff (Stock &amp; Intake)</option>
+                  <option value="billing">Billing Staff (POS Billing, Returns, Sales, Customers — Unlimited)</option>
+                  <option value="manager" disabled={isManagerLimitReached}>
+                    Manager (Inventory, Add Product, Categories — {managerCount}/{MAX_MANAGER_ACCOUNTS})
+                  </option>
                 </select>
               </div>
 
@@ -585,14 +689,17 @@ export const EmployeesView: React.FC = () => {
                   <div>
                     <label className="block text-slate-300 font-medium mb-1">Role</label>
                     <select
-                      value={editRole}
+                      value={editRole === 'manager' ? 'manager' : 'billing'}
                       onChange={(e) => setEditRole(e.target.value as UserRole)}
                       className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-hidden focus:border-indigo-500"
                     >
-                      <option value="admin">Admin</option>
-                      <option value="manager">Manager</option>
+                      <option
+                        value="manager"
+                        disabled={editingStaff.role !== 'manager' && isManagerLimitReached}
+                      >
+                        Manager{editingStaff.role !== 'manager' && isManagerLimitReached ? ' (Max 2 Reached)' : ''}
+                      </option>
                       <option value="billing">Billing Staff</option>
-                      <option value="inventory">Inventory Staff</option>
                     </select>
                   </div>
 

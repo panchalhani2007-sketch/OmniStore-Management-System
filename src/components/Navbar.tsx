@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   Store, 
-  RefreshCw, 
   LogOut, 
   UserCheck, 
   ShieldCheck, 
   ShoppingCart, 
   Menu,
-  ChevronDown
+  ChevronDown,
+  Bell,
+  AlertTriangle,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
@@ -26,12 +29,69 @@ export const Navbar: React.FC<NavbarProps> = ({
   mobileMenuOpen,
   setMobileMenuOpen,
 }) => {
-  const { user, profile, role, simulatedRole, setSimulatedRole, signOut } = useAuth();
-  const { settings, syncTimestamp } = useStore();
+  const { user, profile, role, isAuthorizedAdmin, simulatedRole, setSimulatedRole, signOut } = useAuth();
+  const { products, categories, settings, syncTimestamp } = useStore();
 
-  const [roleDropdownOpen, setRoleDropdownOpen] = React.useState(false);
+  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
+  const [alertDropdownOpen, setAlertDropdownOpen] = useState(false);
+  const alertContainerRef = useRef<HTMLDivElement>(null);
+  const roleContainerRef = useRef<HTMLDivElement>(null);
 
   const roleInfo = ROLE_PERMISSIONS[role];
+  const canViewStockAlerts = role === 'admin' || role === 'manager';
+
+  // Real-time low-stock products derived directly from Firestore live product & category snapshots
+  const lowStockAlerts = useMemo(() => {
+    if (!canViewStockAlerts) return [];
+
+    return products
+      .filter((p) => {
+        if (p.status === 'archived') return false;
+        const minLevel = typeof p.minStockAlert === 'number' ? p.minStockAlert : 10;
+        return p.stock <= minLevel;
+      })
+      .map((p) => {
+        const minLevel = typeof p.minStockAlert === 'number' ? p.minStockAlert : 10;
+        const matchedCategory = p.categoryId
+          ? categories.find((c) => c.id === p.categoryId)?.name
+          : undefined;
+        return {
+          id: p.id,
+          name: p.name,
+          currentStock: p.stock,
+          minStockLevel: minLevel,
+          category: matchedCategory || p.categoryName || 'Uncategorized',
+        };
+      })
+      .sort((a, b) => a.currentStock - b.currentStock || a.name.localeCompare(b.name));
+  }, [canViewStockAlerts, products, categories]);
+
+  // Close dropdowns on outside click or Escape key
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (alertContainerRef.current && !alertContainerRef.current.contains(target)) {
+        setAlertDropdownOpen(false);
+      }
+      if (roleContainerRef.current && !roleContainerRef.current.contains(target)) {
+        setRoleDropdownOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAlertDropdownOpen(false);
+        setRoleDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   return (
     <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-slate-100">
@@ -46,7 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setCurrentTab('dashboard')}>
+          <div className="flex items-center gap-2.5 cursor-pointer" onClick={() => setCurrentTab(roleInfo.allowedTabs[0] || 'inventory')}>
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white font-bold">
               <Store className="w-5 h-5" />
             </div>
@@ -66,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Center / Right: Live Sync Pulse & Quick POS */}
+        {/* Center / Right: Live Sync Pulse, Low Stock Notification Bell & Quick POS */}
         <div className="flex items-center gap-3">
           {/* Real-time Status Badge */}
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/60 text-xs">
@@ -82,6 +142,115 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
+          {/* Low Stock Alert Notification Bell (Admin & Manager) */}
+          {canViewStockAlerts && (
+            <div className="relative" ref={alertContainerRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAlertDropdownOpen((prev) => !prev);
+                  setRoleDropdownOpen(false);
+                }}
+                aria-label="Low Stock Alert Notifications"
+                aria-expanded={alertDropdownOpen}
+                title="Low Stock Alerts"
+                className="relative p-2 rounded-lg bg-slate-800 hover:bg-slate-700/80 text-slate-200 hover:text-white border border-slate-700 transition"
+              >
+                <Bell className="w-4 h-4" />
+                {lowStockAlerts.length > 0 && (
+                  <span
+                    data-testid="low-stock-badge"
+                    className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center shadow-md ring-2 ring-slate-900"
+                  >
+                    {lowStockAlerts.length > 99 ? '99+' : lowStockAlerts.length}
+                  </span>
+                )}
+              </button>
+
+              {alertDropdownOpen && (
+                <div className="fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-[4.25rem] sm:top-auto sm:mt-2 sm:w-96 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden text-xs">
+                  <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-800/60">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className={`w-4 h-4 ${lowStockAlerts.length > 0 ? 'text-red-400' : 'text-emerald-400'}`} />
+                      <span className="font-bold text-white text-sm">Low Stock Alerts</span>
+                      {lowStockAlerts.length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 font-bold text-[10px]">
+                          {lowStockAlerts.length}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAlertDropdownOpen(false)}
+                      aria-label="Close notifications"
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/60 transition"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {lowStockAlerts.length === 0 ? (
+                    <div className="p-6 text-center space-y-2 text-slate-400">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+                      <p className="font-semibold text-slate-200">No Low Stock Alerts</p>
+                      <p className="text-[11px] text-slate-400">
+                        All products are currently above their minimum stock level.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/80">
+                      {lowStockAlerts.map((item) => {
+                        const isOutOfStock = item.currentStock === 0;
+                        return (
+                          <div
+                            key={item.id}
+                            className="px-4 py-3 hover:bg-slate-800/40 transition space-y-1.5"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="font-semibold text-white text-xs leading-snug">
+                                {item.name}
+                              </div>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 border ${
+                                  isOutOfStock
+                                    ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                                    : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                }`}
+                              >
+                                {isOutOfStock ? 'Out of Stock' : 'Low Stock'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 text-[11px] pt-0.5">
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Category</span>
+                                <span className="text-slate-200 font-medium truncate block">
+                                  {item.category}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Current Stock</span>
+                                <span className={`font-mono font-bold ${isOutOfStock ? 'text-red-400' : 'text-amber-400'}`}>
+                                  {item.currentStock}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block text-[10px]">Min Stock Level</span>
+                                <span className="font-mono font-semibold text-slate-200">
+                                  {item.minStockLevel}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Quick POS Trigger if allowed */}
           {roleInfo.canProcessSale && currentTab !== 'pos' && (
             <button
@@ -94,10 +263,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
 
           {/* Role Badge / Admin Perspective Switcher */}
-          {profile?.role === 'admin' || user?.email === 'panchalhani2007@gmail.com' ? (
-            <div className="relative">
+          {isAuthorizedAdmin ? (
+            <div className="relative" ref={roleContainerRef}>
               <button
-                onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
+                onClick={() => {
+                  setRoleDropdownOpen(!roleDropdownOpen);
+                  setAlertDropdownOpen(false);
+                }}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-200 transition"
                 title="Change active perspective for testing"
               >
@@ -113,10 +285,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="absolute right-0 mt-2 w-64 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl py-2 z-50 text-xs">
                   <div className="px-3 py-1.5 border-b border-slate-700">
                     <p className="font-semibold text-slate-200">Admin Perspective Switcher</p>
-                    <p className="text-[11px] text-slate-400">Preview store as any of the 4 roles:</p>
+                    <p className="text-[11px] text-slate-400">Preview store as any of the 3 roles:</p>
                   </div>
 
-                  {(['admin', 'manager', 'billing', 'inventory'] as UserRole[]).map((r) => {
+                  {(['admin', 'manager', 'billing'] as UserRole[]).map((r) => {
                     const perm = ROLE_PERMISSIONS[r];
                     const isCurrent = role === r;
                     return (

@@ -104,16 +104,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, settings, onCl
                 <span className="font-mono">-{formatCurrency(Math.abs(sale.discountAmount), currency)}</span>
               </div>
             )}
-            <div className="flex justify-between text-slate-600 font-sans">
-              <span>GST / Tax ({sale.taxRate}%)</span>
-              <span className="font-mono">{formatCurrency(sale.taxAmount, currency)}</span>
-            </div>
             <div className="flex justify-between text-base font-bold text-slate-900 pt-1.5 border-t border-slate-200">
               <span className="font-sans">Grand Total</span>
               <span className="font-mono">{formatCurrency(sale.grandTotal, currency)}</span>
             </div>
             <div className="flex justify-between text-[11px] text-slate-600 font-sans pt-1">
-              <span>Payment ({sale.paymentMethod.toUpperCase()})</span>
+              <span>Payment Mode: <span className="font-semibold text-slate-900">Cash</span></span>
               <span className="font-semibold text-emerald-700 capitalize">{sale.paymentStatus}</span>
             </div>
           </div>

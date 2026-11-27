@@ -63,7 +63,10 @@ export const CategoriesView: React.FC = () => {
     return colors.find(c => c.id === colorId) || colors[0];
   };
 
+  const canManageCategories = rolePerm.canManageCategories;
+
   const openCreateModal = () => {
+    if (!canManageCategories) return;
     setEditingCategory(null);
     setName('');
     setCode('');
@@ -74,6 +77,7 @@ export const CategoriesView: React.FC = () => {
   };
 
   const openEditModal = (c: Category) => {
+    if (!canManageCategories) return;
     setEditingCategory(c);
     setName(c.name);
     setCode(c.code);
@@ -97,6 +101,10 @@ export const CategoriesView: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManageCategories) {
+      setError('You do not have permission to add or edit categories.');
+      return;
+    }
     if (!name.trim() || !code.trim()) {
       setError('Category Name and Short Code are required.');
       return;
@@ -133,23 +141,25 @@ export const CategoriesView: React.FC = () => {
     }
   };
 
-  // Open delete guard modal
+  // Open delete confirmation modal
   const promptDeleteCategory = (cat: Category) => {
+    if (!canManageCategories) return;
     setDeletingCategory(cat);
     setError(null);
-    // Pick the first alternative category as default target for reassignment
+    // Pick the first alternative category as default target for optional reassignment
     const otherCats = categories.filter(c => c.id !== cat.id);
     setTargetReassignCategoryId(otherCats[0]?.id || '');
   };
 
-  // Execute safe delete (only if 0 products assigned)
+  // Execute category deletion (products are NOT deleted)
   const handleDirectDelete = async () => {
-    if (!deletingCategory) return;
+    if (!deletingCategory || !canManageCategories) return;
     try {
       setIsSubmitting(true);
       setError(null);
+      const deletedName = deletingCategory.name;
       await deleteCategory(deletingCategory.id);
-      setActionSuccess(`Category "${deletingCategory.name}" removed successfully.`);
+      setActionSuccess(`Category "${deletedName}" deleted successfully.`);
       setDeletingCategory(null);
       setTimeout(() => setActionSuccess(null), 4000);
     } catch (err: unknown) {
@@ -159,9 +169,9 @@ export const CategoriesView: React.FC = () => {
     }
   };
 
-  // Reassign all assigned products first, then delete category
+  // Optional: Reassign all assigned products first, then delete category
   const handleReassignAndDelete = async () => {
-    if (!deletingCategory || !targetReassignCategoryId) {
+    if (!deletingCategory || !canManageCategories || !targetReassignCategoryId) {
       setError('Please select a target category to reassign the products to.');
       return;
     }
@@ -170,9 +180,10 @@ export const CategoriesView: React.FC = () => {
       setIsSubmitting(true);
       setError(null);
       const targetCat = categories.find(c => c.id === targetReassignCategoryId);
+      const deletedName = deletingCategory.name;
       await reassignAndDeleteCategory(deletingCategory.id, targetReassignCategoryId);
       setActionSuccess(
-        `Products reassigned to "${targetCat?.name || 'Selected Category'}" and category "${deletingCategory.name}" was deleted.`
+        `Products reassigned to "${targetCat?.name || 'Selected Category'}" and category "${deletedName}" was deleted.`
       );
       setDeletingCategory(null);
       setTimeout(() => setActionSuccess(null), 4000);
@@ -237,13 +248,15 @@ export const CategoriesView: React.FC = () => {
             Create, categorize, organize, and safeguard department classifications for all store items
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20 transition active:scale-95 shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Custom Category</span>
-        </button>
+        {canManageCategories && (
+          <button
+            onClick={openCreateModal}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20 transition active:scale-95 shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Custom Category</span>
+          </button>
+        )}
       </div>
 
       {actionSuccess && (
@@ -357,13 +370,15 @@ export const CategoriesView: React.FC = () => {
               {searchQuery ? 'Try clearing search query or changing filters' : 'Create your first custom category using the button above'}
             </p>
           </div>
-          <button
-            onClick={openCreateModal}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create New Category</span>
-          </button>
+          {canManageCategories && (
+            <button
+              onClick={openCreateModal}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create New Category</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -388,24 +403,26 @@ export const CategoriesView: React.FC = () => {
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colorCfg.id === 'indigo' ? '#6366f1' : colorCfg.id === 'emerald' ? '#10b981' : colorCfg.id === 'amber' ? '#f59e0b' : colorCfg.id === 'rose' ? '#f43f5e' : colorCfg.id === 'blue' ? '#3b82f6' : colorCfg.id === 'purple' ? '#a855f7' : colorCfg.id === 'cyan' ? '#06b6d4' : '#f97316' }} />
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => openEditModal(cat)}
-                        title="Edit Category Details"
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 border border-slate-700 transition"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                      {rolePerm.canDeleteCore && (
+                    {canManageCategories && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => openEditModal(cat)}
+                          title="Edit Category Details"
+                          aria-label={`Edit ${cat.name}`}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 border border-slate-700 transition"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           onClick={() => promptDeleteCategory(cat)}
                           title="Delete Category"
+                          aria-label={`Delete ${cat.name}`}
                           className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 border border-slate-700 transition"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Title & Description */}
@@ -591,135 +608,107 @@ export const CategoriesView: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Guard Modal (Requirement 8) */}
-      {deletingCategory && (
+      {/* Delete Confirmation Modal */}
+      {deletingCategory && canManageCategories && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-5 text-slate-100 shadow-2xl">
-            {assignedToDeleting.length > 0 ? (
-              /* Case A: Products are currently assigned -> Block direct deletion & provide reassignment */
-              <div className="space-y-4 text-xs">
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300">
-                  <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="font-bold text-sm text-white">Cannot Directly Delete Category</h4>
-                    <p className="text-[11px] text-amber-200/90 mt-0.5">
-                      There are currently <span className="font-bold text-white">{assignedToDeleting.length} product(s)</span> assigned to <span className="font-bold text-white">&quot;{deletingCategory.name}&quot;</span>.
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-5 text-slate-100 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-base text-white">Delete Category &quot;{deletingCategory.name}&quot;</h4>
+                <p className="text-xs text-slate-300 mt-1">
+                  Are you sure you want to delete this category?
+                </p>
+              </div>
+            </div>
+
+            {assignedToDeleting.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-200">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-amber-300">
+                      Warning: This category is assigned to {assignedToDeleting.length} existing product{assignedToDeleting.length === 1 ? '' : 's'}.
+                    </p>
+                    <p className="text-[11px] text-amber-200/90">
+                      Deleting this category will not delete those products. Existing products will stay in your inventory and can be reassigned later.
                     </p>
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 space-y-2">
-                  <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider block">
+                <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 space-y-1.5">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
                     Assigned Products ({assignedToDeleting.length}):
                   </span>
-                  <div className="max-h-28 overflow-y-auto space-y-1 pr-1 font-mono text-[11px]">
+                  <div className="max-h-24 overflow-y-auto space-y-1 pr-1 text-[11px]">
                     {assignedToDeleting.map((p) => (
                       <div key={p.id} className="flex justify-between items-center text-slate-300 py-0.5 border-b border-slate-700/40 last:border-none">
-                        <span className="truncate pr-2 font-sans font-medium">{p.name}</span>
-                        <span className="text-slate-400 shrink-0">SKU: {p.sku}</span>
+                        <span className="truncate pr-2 font-medium">{p.name}</span>
+                        <span className="text-slate-400 font-mono shrink-0">Stock: {p.stock}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Reassignment Option */}
-                {categories.filter(c => c.id !== deletingCategory.id).length > 0 ? (
-                  <div className="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-900/50 space-y-2">
-                    <label className="block text-indigo-300 font-semibold">
-                      Reassign these {assignedToDeleting.length} product(s) to another category first:
+                {categories.filter(c => c.id !== deletingCategory.id).length > 0 && (
+                  <div className="p-3 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-2">
+                    <label className="block text-slate-300 font-medium text-[11px]">
+                      Optional: Reassign products to another category before deleting
                     </label>
-                    <select
-                      value={targetReassignCategoryId}
-                      onChange={(e) => setTargetReassignCategoryId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-indigo-500 font-medium"
-                    >
-                      {categories.filter(c => c.id !== deletingCategory.id).map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.code})
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-slate-400">
-                      All products above will be reassigned immediately in Firestore, and the category &quot;{deletingCategory.name}&quot; will then be deleted.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-xl bg-slate-800 text-slate-400 text-xs">
-                    No other categories exist to reassign products to. Please create another category first, or edit the products before deleting this category.
-                  </div>
-                )}
-
-                {error && (
-                  <div className="flex items-center gap-2 p-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{error}</span>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={targetReassignCategoryId}
+                        onChange={(e) => setTargetReassignCategoryId(e.target.value)}
+                        className="flex-1 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-indigo-500 font-medium"
+                      >
+                        {categories.filter(c => c.id !== deletingCategory.id).map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.code})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleReassignAndDelete}
+                        disabled={isSubmitting || !targetReassignCategoryId}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition disabled:opacity-50 shrink-0"
+                      >
+                        <ArrowRightLeft className="w-3 h-3" />
+                        <span>Reassign &amp; Delete</span>
+                      </button>
+                    </div>
                   </div>
                 )}
-
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setDeletingCategory(null)}
-                    disabled={isSubmitting}
-                    className="flex-1 py-2 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  {categories.filter(c => c.id !== deletingCategory.id).length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleReassignAndDelete}
-                      disabled={isSubmitting || !targetReassignCategoryId}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition disabled:opacity-50"
-                    >
-                      <ArrowRightLeft className="w-3.5 h-3.5" />
-                      <span>{isSubmitting ? 'Reassigning...' : 'Reassign & Delete'}</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              /* Case B: 0 products assigned -> safe to delete */
-              <div className="space-y-4 text-xs">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                    <Trash2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-base text-white">Delete Category &quot;{deletingCategory.name}&quot;?</h4>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Are you sure you want to delete this category? There are currently zero products assigned to it.
-                    </p>
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setDeletingCategory(null)}
-                    disabled={isSubmitting}
-                    className="flex-1 py-2 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDirectDelete}
-                    disabled={isSubmitting}
-                    className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition disabled:opacity-50"
-                  >
-                    {isSubmitting ? 'Deleting...' : 'Confirm Delete'}
-                  </button>
-                </div>
               </div>
             )}
+
+            {error && (
+              <div className="flex items-center gap-2 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeletingCategory(null)}
+                disabled={isSubmitting}
+                className="flex-1 py-2 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDirectDelete}
+                disabled={isSubmitting}
+                className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition disabled:opacity-50"
+              >
+                {isSubmitting ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

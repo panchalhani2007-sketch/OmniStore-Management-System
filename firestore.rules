@@ -12,33 +12,78 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function adminLockExists() {
+      return exists(/databases/$(database)/documents/system_config/admin_lock);
+    }
+
+    // Enforce single authorized Admin account bound to immutable /system_config/admin_lock (limit = 1)
+    function isAuthorizedAdmin() {
+      return isSignedIn() &&
+        adminLockExists() &&
+        get(/databases/$(database)/documents/system_config/admin_lock).data.adminUid == request.auth.uid &&
+        ('email' in request.auth.token) &&
+        get(/databases/$(database)/documents/system_config/admin_lock).data.adminEmail == request.auth.token.email.lower();
+    }
+
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '');
+    }
+
     function isActiveUser() {
       return isSignedIn() && (
-        request.auth.token.email == 'panchalhani2007@gmail.com' ||
-        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'inactive'
+        isAuthorizedAdmin() ||
+        (hasUserDoc() &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('status', 'active') != 'inactive' &&
+          userRole() in ['manager', 'billing'])
       );
     }
 
-    function isSuperAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email == 'panchalhani2007@gmail.com' ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status != 'inactive')
-      );
+    function isManagerRole() {
+      return isActiveUser() && !isAuthorizedAdmin() && hasUserDoc() && userRole() == 'manager';
     }
 
-    function isManager() {
-      return isSuperAdmin() || (
-        isActiveUser() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager']
-      );
+    function isBillingStaff() {
+      return isActiveUser() && !isAuthorizedAdmin() && hasUserDoc() && userRole() == 'billing';
     }
 
-    function isStaff() {
-      return isActiveUser();
+    // Manager limit = 2 backend enforcement via fixed slot documents (slot_1, slot_2)
+    function isValidManagerSlotId(slotId) {
+      return slotId in ['slot_1', 'slot_2'];
+    }
+
+    function validManagerSlotPayload(data) {
+      return data.keys().hasAll(['userId', 'email', 'assignedAt']) &&
+        data.keys().hasOnly(['userId', 'email', 'assignedAt']) &&
+        data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+        data.email is string && data.email.size() <= 254 &&
+        data.assignedAt is string && data.assignedAt.size() <= 64;
+    }
+
+    function userAfterIsManager(uid) {
+      return existsAfter(/databases/$(database)/documents/users/$(uid)) &&
+        getAfter(/databases/$(database)/documents/users/$(uid)).data.role == 'manager';
+    }
+
+    function slotPointsToUserAfter(slotId, userId) {
+      return existsAfter(/databases/$(database)/documents/manager_slots/$(slotId)) &&
+        getAfter(/databases/$(database)/documents/manager_slots/$(slotId)).data.userId == userId;
+    }
+
+    function hasManagerSlotAfter(userId) {
+      return slotPointsToUserAfter('slot_1', userId) || slotPointsToUserAfter('slot_2', userId);
+    }
+
+    function otherSlotFreeOfUser(slotId, userId) {
+      return (slotId == 'slot_1' && !slotPointsToUserAfter('slot_2', userId)) ||
+        (slotId == 'slot_2' && !slotPointsToUserAfter('slot_1', userId));
     }
 
     // Default deny
@@ -51,85 +96,167 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Users collection
-    match /users/{userId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
-      allow update: if isSignedIn() && (
-        isSuperAdmin() ||
-        (isOwner(userId) &&
-         request.resource.data.role == resource.data.role &&
-         request.resource.data.status == resource.data.status)
+    // Immutable first-run Admin setup lock & non-PII status flag
+    match /system_config/{docId} {
+      // admin_status has zero PII and indicates whether initial Admin setup is complete
+      allow get: if (docId == 'admin_status') ||
+        (docId == 'admin_lock' && isSignedIn() && resource != null && resource.data.adminUid == request.auth.uid);
+      allow list: if false;
+      allow create: if isSignedIn() && !adminLockExists() && (
+        (docId == 'admin_lock' &&
+          request.resource.data.keys().hasAll(['adminUid', 'adminEmail', 'locked', 'claimedAt']) &&
+          request.resource.data.keys().hasOnly(['adminUid', 'adminEmail', 'locked', 'claimedAt']) &&
+          request.resource.data.adminUid == request.auth.uid &&
+          request.resource.data.adminEmail is string &&
+          request.resource.data.adminEmail.size() > 0 &&
+          request.resource.data.adminEmail.size() <= 254 &&
+          ('email' in request.auth.token) &&
+          request.resource.data.adminEmail == request.auth.token.email.lower() &&
+          request.resource.data.locked == true &&
+          existsAfter(/databases/$(database)/documents/system_config/admin_status) &&
+          existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+          getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active') ||
+        (docId == 'admin_status' &&
+          request.resource.data.keys().hasAll(['locked', 'claimedAt']) &&
+          request.resource.data.keys().hasOnly(['locked', 'claimedAt']) &&
+          request.resource.data.locked == true &&
+          request.resource.data.claimedAt is string &&
+          request.resource.data.claimedAt.size() <= 64 &&
+          existsAfter(/databases/$(database)/documents/system_config/admin_lock) &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.adminUid == request.auth.uid)
       );
-      allow delete: if isSuperAdmin();
+      allow update, delete: if false;
     }
 
-    // Products collection
+    // Fixed-capacity Manager slots (slot_1 and slot_2 only -> hard limit of 2 Managers)
+    match /manager_slots/{slotId} {
+      allow read: if isAuthorizedAdmin();
+      allow create: if isAuthorizedAdmin() &&
+        isValidManagerSlotId(slotId) &&
+        validManagerSlotPayload(request.resource.data) &&
+        userAfterIsManager(request.resource.data.userId) &&
+        otherSlotFreeOfUser(slotId, request.resource.data.userId);
+      allow update: if isAuthorizedAdmin() &&
+        isValidManagerSlotId(slotId) &&
+        validManagerSlotPayload(request.resource.data) &&
+        userAfterIsManager(request.resource.data.userId) &&
+        (resource.data.userId == request.resource.data.userId || !userAfterIsManager(resource.data.userId)) &&
+        otherSlotFreeOfUser(slotId, request.resource.data.userId);
+      allow delete: if isAuthorizedAdmin() &&
+        isValidManagerSlotId(slotId) &&
+        !userAfterIsManager(resource.data.userId);
+    }
+
+    // Users collection: strictly enforce 1 Admin (via admin_lock), max 2 Managers, unlimited Billing Staff
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAuthorizedAdmin());
+      allow list: if isAuthorizedAdmin();
+      allow create: if isValidId(userId) && isSignedIn() && (
+        // Initial one-time Admin registration (only allowed before admin_lock exists)
+        (isOwner(userId) && !adminLockExists() &&
+          existsAfter(/databases/$(database)/documents/system_config/admin_lock) &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.adminUid == request.auth.uid &&
+          request.resource.data.role == 'admin' &&
+          request.resource.data.status == 'active') ||
+        // Self-registration via Register Staff: strictly Billing Staff ONLY (never Admin or Manager)
+        (isOwner(userId) && !isAuthorizedAdmin() &&
+          request.resource.data.role == 'billing' &&
+          request.resource.data.status == 'active') ||
+        // Authorized Admin creating Manager (atomically claims slot_1 or slot_2) or Billing Staff
+        (isAuthorizedAdmin() && !isOwner(userId) &&
+          request.resource.data.status in ['active', 'inactive'] &&
+          (
+            request.resource.data.role == 'billing' ||
+            (request.resource.data.role == 'manager' && hasManagerSlotAfter(userId))
+          ))
+      );
+      allow update: if isValidId(userId) && isSignedIn() && (
+        // Authorized Admin updating own profile
+        (isAuthorizedAdmin() && isOwner(userId) &&
+          request.resource.data.role == 'admin' &&
+          request.resource.data.status == 'active') ||
+        // Authorized Admin managing staff roles/status (cannot promote to admin; max 2 managers)
+        (isAuthorizedAdmin() && !isOwner(userId) &&
+          request.resource.data.status in ['active', 'inactive'] &&
+          (
+            request.resource.data.role == 'billing' ||
+            (request.resource.data.role == 'manager' && hasManagerSlotAfter(userId))
+          )) ||
+        // Non-admin staff updating own non-privilege fields only
+        (isOwner(userId) && !isAuthorizedAdmin() &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.role in ['manager', 'billing'] &&
+          request.resource.data.status == resource.data.status)
+      );
+      allow delete: if isValidId(userId) && isAuthorizedAdmin() && !isOwner(userId);
+    }
+
+    // Products collection: Admin & Manager can create/update; Billing Staff updates only stock on checkout/return
     match /products/{productId} {
-      allow read: if isStaff();
-      allow create, update: if isStaff();
-      allow delete: if isManager();
+      allow read: if isActiveUser();
+      allow create: if isAuthorizedAdmin() || isManagerRole();
+      allow update: if isAuthorizedAdmin() || isManagerRole() || (
+        isBillingStaff() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'updatedAt'])
+      );
+      allow delete: if isAuthorizedAdmin();
     }
 
-    // Categories collection
+    // Categories collection: Admin & Manager can add, edit, and delete; Billing Staff read-only
     match /categories/{categoryId} {
-      allow read: if isStaff();
-      allow write: if isStaff();
+      allow read: if isActiveUser();
+      allow create, update, delete: if isValidId(categoryId) && (isAuthorizedAdmin() || isManagerRole());
     }
 
-    // Customers collection
+    // Customers collection: Admin and Billing Staff only (blocked for Manager)
     match /customers/{customerId} {
-      allow read: if isStaff();
-      allow create, update: if isStaff();
-      allow delete: if isManager();
+      allow read, create, update: if isAuthorizedAdmin() || isBillingStaff();
+      allow delete: if isAuthorizedAdmin();
     }
 
-    // Suppliers collection
-    match /suppliers/{supplierId} {
-      allow read: if isStaff();
-      allow create, update: if isStaff();
-      allow delete: if isManager();
-    }
-
-    // Sales collection
+    // Sales collection: Admin and Billing Staff only (blocked for Manager); new sales enforce Cash only
     match /sales/{saleId} {
-      allow read: if isStaff();
-      allow create: if isStaff();
-      allow update, delete: if isManager();
+      allow read: if isAuthorizedAdmin() || isBillingStaff();
+      allow create: if isValidId(saleId) &&
+        (isAuthorizedAdmin() || isBillingStaff()) &&
+        request.resource.data.paymentMethod == 'cash';
+      allow update, delete: if isAuthorizedAdmin();
     }
 
-    // Purchases collection
-    match /purchases/{purchaseId} {
-      allow read: if isStaff();
-      allow create, update: if isStaff();
-      allow delete: if isManager();
-    }
-
-    // Returns collection
+    // Returns collection: Billing Staff & Admin only (blocked for Manager)
     match /returns/{returnId} {
-      allow read: if isStaff();
-      allow create: if isStaff();
-      allow update, delete: if isManager();
+      allow read, create: if isAuthorizedAdmin() || isBillingStaff();
+      allow update, delete: if isAuthorizedAdmin();
     }
 
-    // Expenses collection
+    // Removed feature collections preserved read-only for Admin only
+    match /suppliers/{supplierId} {
+      allow read: if isAuthorizedAdmin();
+      allow write: if false;
+    }
+
+    match /purchases/{purchaseId} {
+      allow read: if isAuthorizedAdmin();
+      allow write: if false;
+    }
+
     match /expenses/{expenseId} {
-      allow read: if isStaff();
-      allow create, update: if isManager();
-      allow delete: if isManager();
+      allow read: if isAuthorizedAdmin();
+      allow write: if false;
     }
 
-    // Stock movement logs
+    // Stock movement logs (Inventory audit trail; Billing Staff can append on sale/return only)
     match /stock_logs/{logId} {
-      allow read: if isStaff();
-      allow create: if isStaff();
-      allow update, delete: if isSuperAdmin();
+      allow read: if isAuthorizedAdmin() || isManagerRole();
+      allow create: if isActiveUser();
+      allow update, delete: if isAuthorizedAdmin();
     }
 
-    // Store settings
+    // Store settings: read-only for store metadata/currency; write restricted to Admin only
     match /store_settings/{settingId} {
-      allow read: if isStaff();
-      allow write: if isManager();
+      allow read: if isActiveUser();
+      allow write: if isAuthorizedAdmin();
     }
   }
 }

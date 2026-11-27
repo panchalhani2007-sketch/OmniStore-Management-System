@@ -6,16 +6,12 @@ import {
   Plus, 
   Minus, 
   UserPlus, 
-  CreditCard, 
   Banknote, 
-  QrCode, 
   Receipt, 
   AlertCircle, 
-  Tag, 
   Check, 
-  Package, 
+  Package,  
   X,
-  LayoutGrid,
   List,
   Sparkles,
   ArrowRight,
@@ -38,13 +34,12 @@ export const POSBillingView: React.FC = () => {
     addCustomer,
     seedInitialData 
   } = useStore();
-  const { user, profile } = useAuth();
+  const { user, profile, role } = useAuth();
 
-  // Search and view states
+  // Search states
   const [catalogSearch, setCatalogSearch] = useState('');
   const [orderQuickSearch, setOrderQuickSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Cart & Customer states
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -52,10 +47,9 @@ export const POSBillingView: React.FC = () => {
   const [walkInName, setWalkInName] = useState<string>('');
   const [walkInPhone, setWalkInPhone] = useState<string>('');
   
-  // Discount & Payment
+  // Discount & Cash Payment
   const [discountType, setDiscountType] = useState<'percent' | 'flat'>('flat');
   const [discountValue, setDiscountValue] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'upi' | 'credit'>('cash');
   const [cashTendered, setCashTendered] = useState<string>('');
   
   // Processing & Receipts
@@ -75,7 +69,6 @@ export const POSBillingView: React.FC = () => {
   const quickSearchRef = useRef<HTMLDivElement>(null);
 
   const currency = resolveCurrencySymbol(settings.currencySymbol);
-  const taxRate = settings.taxRate ?? 8.5;
 
   // Close quick search dropdown on outside click
   useEffect(() => {
@@ -219,9 +212,7 @@ export const POSBillingView: React.FC = () => {
     ? (subtotal * (Math.min(100, Math.max(0, discountValue)) / 100))
     : Math.min(subtotal, Math.max(0, discountValue));
 
-  const taxableAmount = Math.max(0, subtotal - discountAmount);
-  const taxAmount = (taxableAmount * taxRate) / 100;
-  const grandTotal = taxableAmount + taxAmount;
+  const grandTotal = Math.max(0, subtotal - discountAmount);
 
   // Cash change calculations
   const cashNum = parseFloat(cashTendered) || 0;
@@ -243,7 +234,7 @@ export const POSBillingView: React.FC = () => {
       }
     }
 
-    if (paymentMethod === 'cash' && cashNum > 0 && cashNum < grandTotal) {
+    if (cashNum > 0 && cashNum < grandTotal) {
       setError(`Cash tendered (${formatCurrency(cashNum, currency)}) is less than total amount (${formatCurrency(grandTotal, currency)})`);
       return;
     }
@@ -273,12 +264,10 @@ export const POSBillingView: React.FC = () => {
         subtotal,
         discountAmount,
         discountType,
-        taxRate,
-        taxAmount,
         grandTotal,
-        paymentMethod,
-        cashTendered: paymentMethod === 'cash' ? cashNum : grandTotal,
-        changeDue: paymentMethod === 'cash' ? changeDue : 0,
+        paymentMethod: 'cash' as const,
+        cashTendered: cashNum,
+        changeDue,
         paymentStatus: 'paid' as const,
         cashierId: user?.uid || 'cashier',
         cashierName: profile?.name || user?.displayName || user?.email?.split('@')[0] || 'Staff Cashier',
@@ -371,38 +360,19 @@ export const POSBillingView: React.FC = () => {
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Browse catalogue, search by Name or SKU, and click &ldquo;Add to Cart&rdquo; to build customer order.
+                Browse catalogue, search products, and click &ldquo;Add to Cart&rdquo; to build customer order.
               </p>
             </div>
 
-            {/* View Mode Toggle */}
-            <div className="flex items-center gap-1 self-start sm:self-auto bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition ${
-                  viewMode === 'grid' 
-                    ? 'bg-indigo-600 text-white shadow-sm' 
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="Grid View"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Grid</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition ${
-                  viewMode === 'list' 
-                    ? 'bg-indigo-600 text-white shadow-sm' 
-                    : 'text-slate-400 hover:text-white'
-                }`}
-                title="List / Table View"
+            {/* List View Indicator (Only Display Mode) */}
+            <div className="flex items-center self-start sm:self-auto bg-slate-800/80 p-1 rounded-xl border border-slate-700/60">
+              <div
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 bg-indigo-600 text-white shadow-sm"
+                title="List View"
               >
                 <List className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">List</span>
-              </button>
+                <span>List View</span>
+              </div>
             </div>
           </div>
 
@@ -411,7 +381,7 @@ export const POSBillingView: React.FC = () => {
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
             <input
               type="text"
-              placeholder="Search available products by Name, SKU or Barcode..."
+              placeholder="Search available products by name..."
               value={catalogSearch}
               onChange={(e) => setCatalogSearch(e.target.value)}
               className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-800/90 border border-slate-700 text-white placeholder-slate-400 text-xs sm:text-sm focus:outline-hidden focus:border-indigo-500 transition font-medium"
@@ -465,17 +435,21 @@ export const POSBillingView: React.FC = () => {
             </div>
             <h3 className="text-base font-bold text-white">No Products Found in Firestore</h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto">
-              Your store catalogue is currently empty in Cloud Firestore. You can seed real sample products, categories and suppliers with one click, or add your custom items.
+              {role === 'billing'
+                ? 'Your store catalogue is currently empty in Cloud Firestore. Please ask your Store Administrator or Manager to add products.'
+                : 'Your store catalogue is currently empty in Cloud Firestore. You can seed real sample products and categories with one click, or add your custom items.'}
             </p>
-            <button
-              type="button"
-              onClick={handleSeedData}
-              disabled={isSeeding}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>{isSeeding ? 'Seeding Firestore...' : 'Seed Catalog with Sample Products to Firestore'}</span>
-            </button>
+            {role !== 'billing' && (
+              <button
+                type="button"
+                onClick={handleSeedData}
+                disabled={isSeeding}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 transition inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>{isSeeding ? 'Seeding Firestore...' : 'Seed Catalog with Sample Products to Firestore'}</span>
+              </button>
+            )}
           </div>
         ) : filteredProducts.length === 0 ? (
           /* Search yielded no matches */
@@ -492,202 +466,184 @@ export const POSBillingView: React.FC = () => {
               Reset Filters
             </button>
           </div>
-        ) : viewMode === 'grid' ? (
-          /* ================= GRID VIEW ================= */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 overflow-y-auto max-h-[calc(100vh-18rem)] pr-1">
-            {filteredProducts.map((product) => {
-              const inCart = cart.find(c => c.product.id === product.id);
-              const isOutOfStock = product.stock <= 0;
-              const isLowStock = !isOutOfStock && product.stock <= product.minStockAlert;
-              const isMaxInCart = inCart && inCart.quantity >= product.stock;
-              const catName = getCategoryName(product.categoryId, product.categoryName);
-
-              return (
-                <div
-                  key={product.id}
-                  className={`group relative p-3.5 rounded-2xl border transition flex flex-col justify-between ${
-                    isOutOfStock
-                      ? 'bg-slate-900/60 border-slate-800/80 opacity-60'
-                      : 'bg-slate-800/50 hover:bg-slate-800/90 border-slate-700/60 hover:border-indigo-500/50 shadow-sm hover:shadow-indigo-500/10'
-                  }`}
-                >
-                  <div>
-                    {/* Thumbnail + Stock Status Pill */}
-                    <div className="relative aspect-16/10 rounded-xl overflow-hidden bg-slate-800 mb-2.5">
-                      {product.imageUrl ? (
-                        <img
-                          src={product.imageUrl}
-                          alt={product.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-600 bg-slate-800/80">
-                          <Package className="w-9 h-9 stroke-1 text-slate-500" />
-                        </div>
-                      )}
-
-                      {/* Stock Status Badge */}
-                      <div className="absolute top-2 right-2">
-                        {isOutOfStock ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-600 text-white shadow">
-                            Out of Stock
-                          </span>
-                        ) : isLowStock ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 shadow">
-                            Only {product.stock} {product.unit} left
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-900/90 text-emerald-400 border border-emerald-500/30">
-                            {product.stock} {product.unit} available
-                          </span>
-                        )}
-                      </div>
-
-                      {/* In Cart Indicator */}
-                      {inCart && (
-                        <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-indigo-600 text-white flex items-center gap-1 text-[11px] font-bold shadow-md">
-                          <ShoppingCart className="w-3 h-3" />
-                          <span>{inCart.quantity} in cart</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Category & SKU */}
-                    <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-700/60 text-slate-300 truncate max-w-[140px]">
-                        {catName}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {product.sku}
-                      </span>
-                    </div>
-
-                    {/* Product Name */}
-                    <h4 className="text-xs sm:text-sm font-semibold text-white line-clamp-2 leading-tight group-hover:text-indigo-300 transition">
-                      {product.name}
-                    </h4>
-                  </div>
-
-                  {/* Price & Add to Cart Action */}
-                  <div className="mt-3 pt-2.5 border-t border-slate-700/60 flex items-center justify-between gap-2">
-                    <div>
-                      <span className="text-[10px] text-slate-400 block leading-none">Price</span>
-                      <span className="text-sm sm:text-base font-bold text-emerald-400 font-mono">
-                        {formatCurrency(product.sellingPrice, currency)}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={isOutOfStock || isMaxInCart}
-                      onClick={() => addToCart(product)}
-                      className={`py-1.5 px-3 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
-                        isOutOfStock || isMaxInCart
-                          ? 'bg-slate-800 text-slate-600 cursor-not-allowed border border-slate-700/50'
-                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 active:scale-95'
-                      }`}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>{isMaxInCart ? 'Max In Cart' : 'Add to Cart'}</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         ) : (
-          /* ================= LIST / TABLE VIEW ================= */
-          <div className="overflow-x-auto max-h-[calc(100vh-18rem)] overflow-y-auto rounded-xl border border-slate-800">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-800/80 text-slate-400 font-semibold uppercase text-[10px] sticky top-0 z-10 backdrop-blur-xs">
-                <tr>
-                  <th className="py-2.5 px-3">Product</th>
-                  <th className="py-2.5 px-3">Category</th>
-                  <th className="py-2.5 px-3">SKU</th>
-                  <th className="py-2.5 px-3 text-right">Price</th>
-                  <th className="py-2.5 px-3 text-center">Available Stock</th>
-                  <th className="py-2.5 px-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800">
-                {filteredProducts.map((product) => {
-                  const inCart = cart.find(c => c.product.id === product.id);
-                  const isOutOfStock = product.stock <= 0;
-                  const isLowStock = !isOutOfStock && product.stock <= product.minStockAlert;
-                  const isMaxInCart = inCart && inCart.quantity >= product.stock;
-                  const catName = getCategoryName(product.categoryId, product.categoryName);
+          /* ================= LIST VIEW (RESPONSIVE MOBILE & DESKTOP) ================= */
+          <div>
+            {/* Mobile Clean List View */}
+            <div className="md:hidden divide-y divide-slate-800 rounded-xl border border-slate-800 max-h-[calc(100vh-18rem)] overflow-y-auto">
+              {filteredProducts.map((product) => {
+                const inCart = cart.find(c => c.product.id === product.id);
+                const isOutOfStock = product.stock <= 0;
+                const isLowStock = !isOutOfStock && product.stock <= product.minStockAlert;
+                const isMaxInCart = inCart && inCart.quantity >= product.stock;
+                const catName = getCategoryName(product.categoryId, product.categoryName);
 
-                  return (
-                    <tr 
-                      key={product.id}
-                      className={`hover:bg-slate-800/50 transition ${isOutOfStock ? 'opacity-60' : ''}`}
-                    >
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center text-slate-600">
-                            {product.imageUrl ? (
-                              <img src={product.imageUrl} alt="" className="w-full h-full object-cover" />
-                            ) : (
-                              <Package className="w-4 h-4 text-slate-500" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-white leading-tight">{product.name}</p>
+                return (
+                  <div
+                    key={product.id}
+                    className={`p-3 flex flex-col gap-2.5 hover:bg-slate-800/50 transition ${isOutOfStock ? 'opacity-60' : ''}`}
+                  >
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-lg bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center text-slate-600">
+                          {product.imageUrl ? (
+                            <img src={product.imageUrl} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <Package className="w-4 h-4 text-slate-500" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-white leading-tight truncate">{product.name}</p>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium text-[10px]">
+                              {catName}
+                            </span>
                             {inCart && (
-                              <span className="text-[10px] text-indigo-400 font-medium">
+                              <span className="text-[10px] text-indigo-400 font-semibold">
                                 ({inCart.quantity} in cart)
                               </span>
                             )}
                           </div>
                         </div>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium text-[11px]">
-                          {catName}
+                      </div>
+                      <div className="text-right shrink-0 space-y-0.5">
+                        <span className="text-[10px] text-slate-400 font-mono block">
+                          Price: {formatCurrency(product.costPrice, currency)}
                         </span>
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-400 text-[11px]">
-                        {product.sku}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-emerald-400 font-mono text-xs">
-                        {formatCurrency(product.sellingPrice, currency)}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
+                        <span className="text-xs font-bold text-emerald-400 font-mono block">
+                          {formatCurrency(product.sellingPrice, currency)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <div>
                         {isOutOfStock ? (
                           <span className="px-2 py-0.5 rounded-full bg-rose-600/20 text-rose-400 border border-rose-500/30 text-[10px] font-bold">
                             Out of Stock
                           </span>
                         ) : isLowStock ? (
                           <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
-                            {product.stock} {product.unit} (Low)
+                            {product.stock} (Low)
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">
-                            {product.stock} {product.unit}
+                            {product.stock} available
                           </span>
                         )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <button
-                          type="button"
-                          disabled={isOutOfStock || isMaxInCart}
-                          onClick={() => addToCart(product)}
-                          className={`py-1 px-3 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1 cursor-pointer ${
-                            isOutOfStock || isMaxInCart
-                              ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'
-                          }`}
-                        >
-                          <Plus className="w-3 h-3" />
-                          <span>{isMaxInCart ? 'Max' : 'Add to Cart'}</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={isOutOfStock || isMaxInCart}
+                        onClick={() => addToCart(product)}
+                        className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1 cursor-pointer ${
+                          isOutOfStock || isMaxInCart
+                            ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'
+                        }`}
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{isMaxInCart ? 'Max' : 'Add to Cart'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table List View */}
+            <div className="hidden md:block overflow-x-auto max-h-[calc(100vh-18rem)] overflow-y-auto rounded-xl border border-slate-800">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-800/80 text-slate-400 font-semibold uppercase text-[10px] sticky top-0 z-10 backdrop-blur-xs">
+                  <tr>
+                    <th className="py-2.5 px-3">Product Name</th>
+                    <th className="py-2.5 px-3">Category</th>
+                    <th className="py-2.5 px-3 text-right">Price (₹)</th>
+                    <th className="py-2.5 px-3 text-right">Selling Price (₹)</th>
+                    <th className="py-2.5 px-3 text-center">Available Stock</th>
+                    <th className="py-2.5 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {filteredProducts.map((product) => {
+                    const inCart = cart.find(c => c.product.id === product.id);
+                    const isOutOfStock = product.stock <= 0;
+                    const isLowStock = !isOutOfStock && product.stock <= product.minStockAlert;
+                    const isMaxInCart = inCart && inCart.quantity >= product.stock;
+                    const catName = getCategoryName(product.categoryId, product.categoryName);
+
+                    return (
+                      <tr 
+                        key={product.id}
+                        className={`hover:bg-slate-800/50 transition ${isOutOfStock ? 'opacity-60' : ''}`}
+                      >
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center text-slate-600">
+                              {product.imageUrl ? (
+                                <img src={product.imageUrl} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <Package className="w-4 h-4 text-slate-500" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-white leading-tight">{product.name}</p>
+                              {inCart && (
+                                <span className="text-[10px] text-indigo-400 font-medium">
+                                  ({inCart.quantity} in cart)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium text-[11px]">
+                            {catName}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-400 font-mono text-xs">
+                          {formatCurrency(product.costPrice, currency)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-emerald-400 font-mono text-xs">
+                          {formatCurrency(product.sellingPrice, currency)}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {isOutOfStock ? (
+                            <span className="px-2 py-0.5 rounded-full bg-rose-600/20 text-rose-400 border border-rose-500/30 text-[10px] font-bold">
+                              Out of Stock
+                            </span>
+                          ) : isLowStock ? (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                              {product.stock} (Low)
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">
+                              {product.stock}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <button
+                            type="button"
+                            disabled={isOutOfStock || isMaxInCart}
+                            onClick={() => addToCart(product)}
+                            className={`py-1 px-3 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1 cursor-pointer ${
+                              isOutOfStock || isMaxInCart
+                                ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'
+                            }`}
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>{isMaxInCart ? 'Max' : 'Add to Cart'}</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -769,7 +725,7 @@ export const POSBillingView: React.FC = () => {
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-semibold text-white truncate">{prod.name}</p>
                           <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">
-                            <span>{prod.sku}</span>
+                            <span>{getCategoryName(prod.categoryId, prod.categoryName)}</span>
                             <span>•</span>
                             <span className={isOut ? 'text-rose-400' : 'text-emerald-400'}>
                               {isOut ? 'Out of stock' : `${prod.stock} in stock`}
@@ -954,7 +910,7 @@ export const POSBillingView: React.FC = () => {
             )}
           </div>
 
-          {/* Pricing, Discount & GST Calculation Breakdown */}
+          {/* Pricing, Discount & Final Total Breakdown */}
           <div className="pt-3 border-t border-slate-800 space-y-2.5 text-xs">
             
             {/* Discount input */}
@@ -994,12 +950,6 @@ export const POSBillingView: React.FC = () => {
                 </div>
               )}
 
-              {/* Explicit GST line item */}
-              <div className="flex justify-between">
-                <span>GST ({taxRate}%):</span>
-                <span className="font-mono text-slate-200">{formatCurrency(taxAmount, currency)}</span>
-              </div>
-
               {/* Grand Total */}
               <div className="flex justify-between text-sm sm:text-base font-bold text-white pt-2 border-t border-slate-700">
                 <span>Final Total:</span>
@@ -1007,87 +957,37 @@ export const POSBillingView: React.FC = () => {
               </div>
             </div>
 
-            {/* Payment Method Selector */}
-            <div className="pt-1">
-              <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
-                Payment Method
-              </label>
-              <div className="grid grid-cols-4 gap-1.5 text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('cash')}
-                  className={`py-2 rounded-xl border font-medium flex flex-col items-center gap-1 transition cursor-pointer ${
-                    paymentMethod === 'cash'
-                      ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400 font-bold'
-                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
-                  }`}
-                >
+            {/* Cash Payment & Change Return Calculator */}
+            <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 space-y-2">
+              <div className="flex items-center justify-between text-xs pb-1.5 border-b border-slate-700/80">
+                <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                  Payment Mode
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 font-bold text-[11px]">
                   <Banknote className="w-3.5 h-3.5" />
                   <span>Cash</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('card')}
-                  className={`py-2 rounded-xl border font-medium flex flex-col items-center gap-1 transition cursor-pointer ${
-                    paymentMethod === 'card'
-                      ? 'bg-indigo-600/20 border-indigo-500 text-indigo-400 font-bold'
-                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <CreditCard className="w-3.5 h-3.5" />
-                  <span>Card</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('upi')}
-                  className={`py-2 rounded-xl border font-medium flex flex-col items-center gap-1 transition cursor-pointer ${
-                    paymentMethod === 'upi'
-                      ? 'bg-amber-600/20 border-amber-500 text-amber-400 font-bold'
-                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <QrCode className="w-3.5 h-3.5" />
-                  <span>UPI / QR</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('credit')}
-                  className={`py-2 rounded-xl border font-medium flex flex-col items-center gap-1 transition cursor-pointer ${
-                    paymentMethod === 'credit'
-                      ? 'bg-purple-600/20 border-purple-500 text-purple-400 font-bold'
-                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <Tag className="w-3.5 h-3.5" />
-                  <span>Credit</span>
-                </button>
+                </span>
               </div>
-            </div>
-
-            {/* Cash Tendered & Change Return Calculator */}
-            {paymentMethod === 'cash' && (
-              <div className="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700 space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-300 font-medium">Cash Tendered:</span>
-                  <input
-                    type="number"
-                    placeholder="0.00"
-                    step="any"
-                    value={cashTendered}
-                    onChange={(e) => setCashTendered(e.target.value)}
-                    className="w-28 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-600 text-right text-white font-mono text-xs focus:outline-hidden focus:border-indigo-500 font-bold"
-                  />
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-300 font-medium">Cash Tendered:</span>
+                <input
+                  type="number"
+                  placeholder="0.00"
+                  step="any"
+                  value={cashTendered}
+                  onChange={(e) => setCashTendered(e.target.value)}
+                  className="w-28 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-600 text-right text-white font-mono text-xs focus:outline-hidden focus:border-indigo-500 font-bold"
+                />
+              </div>
+              {cashNum >= grandTotal && grandTotal > 0 && (
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-700">
+                  <span className="text-emerald-400 font-semibold">Change to Return:</span>
+                  <span className="font-mono font-bold text-emerald-400 text-sm">
+                    {formatCurrency(changeDue, currency)}
+                  </span>
                 </div>
-                {cashNum >= grandTotal && grandTotal > 0 && (
-                  <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-700">
-                    <span className="text-emerald-400 font-semibold">Change to Return:</span>
-                    <span className="font-mono font-bold text-emerald-400 text-sm">
-                      {formatCurrency(changeDue, currency)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Error Notice */}
             {error && (
@@ -1196,7 +1096,7 @@ export const POSBillingView: React.FC = () => {
         </div>
       )}
 
-      {/* Professional Tax Bill & Receipt Modal */}
+      {/* Receipt / Bill Print Modal */}
       {completedSale && (
         <ReceiptModal
           sale={completedSale}

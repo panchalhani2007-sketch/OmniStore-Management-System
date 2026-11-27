@@ -1,4 +1,7 @@
-export type UserRole = 'admin' | 'manager' | 'billing' | 'inventory';
+export type UserRole = 'admin' | 'manager' | 'billing';
+
+export const MAX_ADMIN_ACCOUNTS = 1;
+export const MAX_MANAGER_ACCOUNTS = 2;
 
 export interface UserProfile {
   id: string;
@@ -53,18 +56,6 @@ export interface Customer {
   updatedAt: string;
 }
 
-export interface Supplier {
-  id: string;
-  name: string;
-  contactPerson?: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  suppliedCategories?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface CartItem {
   product: Product;
   quantity: number;
@@ -90,39 +81,13 @@ export interface Sale {
   customerPhone?: string;
   items: SaleItem[];
   subtotal: number;
-  taxRate: number;
-  taxAmount: number;
   discountAmount: number;
   grandTotal: number;
-  paymentMethod: 'cash' | 'card' | 'upi' | 'credit';
+  paymentMethod: 'cash';
   paymentStatus: 'paid' | 'pending' | 'refunded';
   cashierId: string;
   cashierName: string;
   notes?: string;
-  createdAt: string;
-}
-
-export interface PurchaseItem {
-  productId: string;
-  productName: string;
-  sku: string;
-  costPrice: number;
-  quantity: number;
-  total: number;
-}
-
-export interface Purchase {
-  id: string;
-  purchaseNumber: string;
-  supplierId: string;
-  supplierName: string;
-  items: PurchaseItem[];
-  totalAmount: number;
-  paymentStatus: 'paid' | 'pending';
-  receivedStatus: 'received' | 'ordered' | 'partial';
-  receivedDate?: string;
-  notes?: string;
-  createdBy: string;
   createdAt: string;
 }
 
@@ -148,19 +113,6 @@ export interface Return {
   createdAt: string;
 }
 
-export interface Expense {
-  id: string;
-  title: string;
-  category: 'Rent' | 'Utilities' | 'Salaries' | 'Maintenance' | 'Supplies' | 'Marketing' | 'Other';
-  amount: number;
-  paymentMethod: string;
-  reference?: string;
-  notes?: string;
-  date: string;
-  createdBy: string;
-  createdAt: string;
-}
-
 export interface StockLog {
   id: string;
   productId: string;
@@ -182,7 +134,6 @@ export interface StoreSettings {
   phone: string;
   email: string;
   currencySymbol: string;
-  taxRate: number;
   receiptFooter: string;
   updatedAt?: string;
 }
@@ -193,15 +144,10 @@ export type StoreTab =
   | 'products'
   | 'inventory'
   | 'sales'
-  | 'reports'
   | 'customers'
-  | 'suppliers'
-  | 'purchases'
   | 'returns'
-  | 'expenses'
   | 'categories'
-  | 'employees'
-  | 'settings';
+  | 'employees';
 
 export const ROLE_PERMISSIONS: Record<UserRole, {
   name: string;
@@ -209,71 +155,50 @@ export const ROLE_PERMISSIONS: Record<UserRole, {
   description: string;
   allowedTabs: StoreTab[];
   canEditEmployees: boolean;
-  canEditSettings: boolean;
   canDeleteCore: boolean;
+  canManageCategories: boolean;
   canAdjustStock: boolean;
   canProcessSale: boolean;
   canProcessReturn: boolean;
-  canAddExpenses: boolean;
 }> = {
   admin: {
     name: 'Admin',
     color: 'bg-rose-500/10 text-rose-500 border-rose-500/20',
-    description: 'Full system control, staff management, financial reports, all operations',
+    description: 'Authorized store administrator: inventory, products, sales, customers, categories, and staff management',
     allowedTabs: [
-      'dashboard', 'pos', 'products', 'inventory', 'sales', 'reports',
-      'customers', 'suppliers', 'purchases', 'returns',
-      'expenses', 'categories', 'employees', 'settings'
+      'inventory', 'products', 'sales', 'customers', 'categories', 'employees'
     ],
     canEditEmployees: true,
-    canEditSettings: true,
     canDeleteCore: true,
+    canManageCategories: true,
     canAdjustStock: true,
-    canProcessSale: true,
-    canProcessReturn: true,
-    canAddExpenses: true,
+    canProcessSale: false,
+    canProcessReturn: false,
   },
   manager: {
     name: 'Manager',
     color: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
-    description: 'Operational manager with full store, inventory, sales, and purchases control',
+    description: 'Store manager: inventory tracking, add product, and categories management',
     allowedTabs: [
-      'dashboard', 'pos', 'products', 'inventory', 'sales', 'reports',
-      'customers', 'suppliers', 'purchases', 'returns',
-      'expenses', 'categories', 'employees', 'settings'
+      'inventory', 'products', 'categories'
     ],
     canEditEmployees: false,
-    canEditSettings: false,
     canDeleteCore: false,
+    canManageCategories: true,
     canAdjustStock: true,
-    canProcessSale: true,
-    canProcessReturn: true,
-    canAddExpenses: true,
+    canProcessSale: false,
+    canProcessReturn: false,
   },
   billing: {
     name: 'Billing Staff',
     color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
-    description: 'Cashier & POS terminal access, stock lookup, customer creation, sales and returns',
-    allowedTabs: ['pos', 'sales', 'inventory', 'customers', 'returns'],
+    description: 'Cashier & POS terminal access, return & refund processing, sales receipts, and customer records',
+    allowedTabs: ['pos', 'returns', 'sales', 'customers'],
     canEditEmployees: false,
-    canEditSettings: false,
     canDeleteCore: false,
+    canManageCategories: false,
     canAdjustStock: false,
     canProcessSale: true,
     canProcessReturn: true,
-    canAddExpenses: false,
-  },
-  inventory: {
-    name: 'Inventory Staff',
-    color: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
-    description: 'Warehouse & stock keeper: inventory tables, alerts, purchases stock-in, products view',
-    allowedTabs: ['inventory', 'products', 'purchases', 'categories', 'suppliers'],
-    canEditEmployees: false,
-    canEditSettings: false,
-    canDeleteCore: false,
-    canAdjustStock: true,
-    canProcessSale: false,
-    canProcessReturn: false,
-    canAddExpenses: false,
   },
 };

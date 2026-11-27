@@ -6,16 +6,10 @@ import {
   Boxes, 
   Receipt, 
   Users, 
-  Truck, 
-  ClipboardList, 
   RotateCcw, 
-  Wallet, 
   Tags, 
   UserCog, 
-  Settings,
-  ShieldCheck,
   AlertTriangle,
-  BarChart3,
   X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -55,17 +49,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'pos', label: 'POS Billing', icon: ShoppingCart },
     { id: 'inventory', label: 'Inventory', icon: Boxes, badge: lowStockCount > 0 ? lowStockCount : undefined },
-    { id: 'products', label: 'Products', icon: Package },
+    { id: 'products', label: role === 'manager' ? 'Add Product' : 'Products', icon: Package },
+    { id: 'returns', label: role === 'billing' ? 'Return & Refund' : 'Returns & Refunds', icon: RotateCcw },
     { id: 'sales', label: 'Sales & Receipts', icon: Receipt },
-    { id: 'reports', label: 'Reports & Analytics', icon: BarChart3 },
-    { id: 'purchases', label: 'Purchases (Stock-In)', icon: ClipboardList },
-    { id: 'returns', label: 'Returns & Refunds', icon: RotateCcw },
     { id: 'customers', label: 'Customers', icon: Users },
-    { id: 'suppliers', label: 'Suppliers', icon: Truck },
-    { id: 'expenses', label: 'Store Expenses', icon: Wallet },
     { id: 'categories', label: 'Categories', icon: Tags },
     { id: 'employees', label: 'Staff & Roles', icon: UserCog },
-    { id: 'settings', label: 'Store Settings', icon: Settings },
   ];
 
   const visibleNavItems = navItems.filter(item => allowedTabs.includes(item.id));
@@ -151,8 +140,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Low Stock Alert Footer Badge */}
-        {lowStockCount > 0 && (
+        {/* Low Stock Alert Footer Badge (only for roles with Inventory access) */}
+        {allowedTabs.includes('inventory') && lowStockCount > 0 && (
           <div className="p-3 m-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
             <div className="flex items-center gap-2 font-semibold mb-0.5">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />

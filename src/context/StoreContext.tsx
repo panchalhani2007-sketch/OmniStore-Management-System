@@ -19,17 +19,13 @@ import {
   Product, 
   Category, 
   Customer, 
-  Supplier, 
   Sale, 
   SaleItem, 
-  Purchase, 
-  PurchaseItem, 
   Return, 
   ReturnItem, 
-  Expense, 
   StockLog, 
   StoreSettings, 
-  UserProfile 
+  UserProfile
 } from '../types/store';
 import { handleFirestoreError, OperationType } from '../firebase/errors';
 import { resolveCurrencySymbol } from '../utils/currency';
@@ -38,11 +34,8 @@ interface StoreContextType {
   products: Product[];
   categories: Category[];
   customers: Customer[];
-  suppliers: Supplier[];
   sales: Sale[];
-  purchases: Purchase[];
   returns: Return[];
-  expenses: Expense[];
   stockLogs: StockLog[];
   employees: UserProfile[];
   settings: StoreSettings;
@@ -64,21 +57,10 @@ interface StoreContextType {
   updateCustomer: (id: string, customer: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
 
-  addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
-  updateSupplier: (id: string, supplier: Partial<Supplier>) => Promise<void>;
-  deleteSupplier: (id: string) => Promise<void>;
-
   processSale: (saleData: Omit<Sale, 'id' | 'createdAt' | 'items'>, items: SaleItem[]) => Promise<string>;
-  
-  addPurchase: (purchaseData: Omit<Purchase, 'id' | 'createdAt' | 'items'>, items: PurchaseItem[], autoRestock: boolean) => Promise<string>;
-  receivePurchase: (purchaseId: string) => Promise<void>;
 
   processReturn: (returnData: Omit<Return, 'id' | 'createdAt' | 'items'>, items: ReturnItem[]) => Promise<string>;
 
-  addExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => Promise<string>;
-  deleteExpense: (id: string) => Promise<void>;
-
-  updateSettings: (newSettings: Partial<StoreSettings>) => Promise<void>;
   seedInitialData: () => Promise<void>;
 }
 
@@ -89,25 +71,21 @@ const defaultSettings: StoreSettings = {
   phone: '+1 (555) 438-9201',
   email: 'contact@omnistore.internal',
   currencySymbol: '₹',
-  taxRate: 8.5,
   receiptFooter: 'Thank you for shopping with us! Please retain this receipt for returns within 14 days.',
 };
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const { user, role } = useAuth();
+  const { user, profile, role, isAuthorizedAdmin, loading: authLoading, isUnauthorizedAccount, isAccountDisabled } = useAuth();
   const canManageSettingsRef = React.useRef(false);
-  canManageSettingsRef.current = role === 'admin' || role === 'manager';
+  canManageSettingsRef.current = isAuthorizedAdmin;
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [returns, setReturns] = useState<Return[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [stockLogs, setStockLogs] = useState<StockLog[]>([]);
   const [employees, setEmployees] = useState<UserProfile[]>([]);
   const [settings, setSettings] = useState<StoreSettings>(defaultSettings);
@@ -115,17 +93,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [syncTimestamp, setSyncTimestamp] = useState<Date | null>(null);
 
-  // Set up real-time listeners only when user is authenticated
+  // Set up real-time listeners only when user is authenticated and role is resolved
   useEffect(() => {
-    if (!user) {
+    if (authLoading) {
+      return;
+    }
+
+    if (!user || !profile || isUnauthorizedAccount || isAccountDisabled) {
       setProducts([]);
       setCategories([]);
       setCustomers([]);
-      setSuppliers([]);
       setSales([]);
-      setPurchases([]);
       setReturns([]);
-      setExpenses([]);
       setStockLogs([]);
       setEmployees([]);
       setLoading(false);
@@ -155,85 +134,87 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       (error) => handleFirestoreError(error, OperationType.GET, 'categories')
     );
 
-    // Customers listener
-    const unsubCustomers = onSnapshot(
-      collection(db, 'customers'),
-      (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
-        setCustomers(list);
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'customers')
-    );
+    const canReadCustomersAndSales =
+      role === 'admin' || role === 'billing' || isAuthorizedAdmin;
+    const canReadReturns = role === 'billing' || isAuthorizedAdmin;
 
-    // Suppliers listener
-    const unsubSuppliers = onSnapshot(
-      collection(db, 'suppliers'),
-      (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier));
-        setSuppliers(list);
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'suppliers')
-    );
+    // Customers listener (Admin & Billing Staff only)
+    const unsubCustomers = canReadCustomersAndSales
+      ? onSnapshot(
+          collection(db, 'customers'),
+          (snapshot) => {
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+            setCustomers(list);
+          },
+          (error) => handleFirestoreError(error, OperationType.GET, 'customers')
+        )
+      : (() => {
+          setCustomers([]);
+          return () => {};
+        })();
 
-    // Sales listener (sorted by date desc)
-    const unsubSales = onSnapshot(
-      query(collection(db, 'sales'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
-        setSales(list);
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'sales')
-    );
+    // Sales listener (Admin & Billing Staff only)
+    const unsubSales = canReadCustomersAndSales
+      ? onSnapshot(
+          query(collection(db, 'sales'), orderBy('createdAt', 'desc')),
+          (snapshot) => {
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
+            setSales(list);
+          },
+          (error) => handleFirestoreError(error, OperationType.GET, 'sales')
+        )
+      : (() => {
+          setSales([]);
+          return () => {};
+        })();
 
-    // Purchases listener
-    const unsubPurchases = onSnapshot(
-      query(collection(db, 'purchases'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase));
-        setPurchases(list);
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'purchases')
-    );
+    // Returns listener (Billing Staff only)
+    const unsubReturns = canReadReturns
+      ? onSnapshot(
+          query(collection(db, 'returns'), orderBy('createdAt', 'desc')),
+          (snapshot) => {
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Return));
+            setReturns(list);
+          },
+          (error) => handleFirestoreError(error, OperationType.GET, 'returns')
+        )
+      : (() => {
+          setReturns([]);
+          return () => {};
+        })();
 
-    // Returns listener
-    const unsubReturns = onSnapshot(
-      query(collection(db, 'returns'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Return));
-        setReturns(list);
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'returns')
-    );
+    const canReadStockLogs =
+      role === 'admin' || role === 'manager' || isAuthorizedAdmin;
 
-    // Expenses listener
-    const unsubExpenses = onSnapshot(
-      query(collection(db, 'expenses'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense));
-        setExpenses(list);
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'expenses')
-    );
+    // Stock Logs listener (Admin & Manager only)
+    const unsubStockLogs = canReadStockLogs
+      ? onSnapshot(
+          query(collection(db, 'stock_logs'), orderBy('createdAt', 'desc')),
+          (snapshot) => {
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockLog));
+            setStockLogs(list);
+          },
+          (error) => handleFirestoreError(error, OperationType.GET, 'stock_logs')
+        )
+      : (() => {
+          setStockLogs([]);
+          return () => {};
+        })();
 
-    // Stock Logs listener
-    const unsubStockLogs = onSnapshot(
-      query(collection(db, 'stock_logs'), orderBy('createdAt', 'desc')),
-      (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockLog));
-        setStockLogs(list);
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'stock_logs')
-    );
-
-    // Employees listener
-    const unsubEmployees = onSnapshot(
-      collection(db, 'users'),
-      (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
-        setEmployees(list);
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'users')
-    );
+    // Employees listener (authorized Admin only)
+    const unsubEmployees = isAuthorizedAdmin && role === 'admin'
+      ? onSnapshot(
+          collection(db, 'users'),
+          (snapshot) => {
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
+            setEmployees(list);
+          },
+          (error) => handleFirestoreError(error, OperationType.GET, 'users')
+        )
+      : (() => {
+          setEmployees([]);
+          return () => {};
+        })();
 
     // Settings listener
     const unsubSettings = onSnapshot(
@@ -262,16 +243,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       unsubProducts();
       unsubCategories();
       unsubCustomers();
-      unsubSuppliers();
       unsubSales();
-      unsubPurchases();
       unsubReturns();
-      unsubExpenses();
       unsubStockLogs();
       unsubEmployees();
       unsubSettings();
     };
-  }, [user]);
+  }, [user, profile, role, isAuthorizedAdmin, authLoading, isUnauthorizedAccount, isAccountDisabled]);
 
   // Product CRUD
   const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -409,13 +387,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const deleteCategory = async (id: string) => {
     try {
-      // Prevent deleting category if products are currently assigned to it
-      const assigned = products.filter(p => p.categoryId === id);
-      if (assigned.length > 0) {
-        throw new Error(
-          `Cannot delete category: ${assigned.length} product(s) are assigned to it. Please reassign those products first.`
-        );
-      }
       await deleteDoc(doc(db, 'categories', id));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `categories/${id}`);
@@ -487,40 +458,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Supplier CRUD
-  const addSupplier = async (supplierData: Omit<Supplier, 'id' | 'createdAt' | 'updatedAt'>) => {
-    try {
-      const now = new Date().toISOString();
-      const docRef = await addDoc(collection(db, 'suppliers'), {
-        ...supplierData,
-        createdAt: now,
-        updatedAt: now
-      });
-      return docRef.id;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'suppliers');
-    }
-  };
-
-  const updateSupplier = async (id: string, supplierData: Partial<Supplier>) => {
-    try {
-      await updateDoc(doc(db, 'suppliers', id), {
-        ...supplierData,
-        updatedAt: new Date().toISOString()
-      });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `suppliers/${id}`);
-    }
-  };
-
-  const deleteSupplier = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'suppliers', id));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `suppliers/${id}`);
-    }
-  };
-
   // Sales Transaction (Atomic stock verification, deduction + logs + customer update)
   const processSale = async (saleData: Omit<Sale, 'id' | 'createdAt' | 'items'>, items: SaleItem[]) => {
     try {
@@ -566,9 +503,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           });
         }
 
-        // 3. Create Sale Document
+        // 3. Create Sale Document (enforce Cash payment mode)
         transaction.set(saleRef, {
           ...saleData,
+          paymentMethod: 'cash',
           items,
           createdAt: now
         });
@@ -612,104 +550,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         throw err;
       }
       handleFirestoreError(err, OperationType.WRITE, 'sales');
-    }
-  };
-
-  // Purchase Order & Stock In
-  const addPurchase = async (purchaseData: Omit<Purchase, 'id' | 'createdAt' | 'items'>, items: PurchaseItem[], autoRestock: boolean) => {
-    try {
-      const batch = writeBatch(db);
-      const now = new Date().toISOString();
-
-      const purchaseRef = doc(collection(db, 'purchases'));
-      batch.set(purchaseRef, {
-        ...purchaseData,
-        items,
-        receivedStatus: autoRestock ? 'received' : purchaseData.receivedStatus,
-        receivedDate: autoRestock ? now : (purchaseData.receivedDate || ''),
-        createdAt: now
-      });
-
-      if (autoRestock) {
-        for (const item of items) {
-          const prod = products.find(p => p.id === item.productId);
-          const prevStock = prod ? prod.stock : 0;
-          const newStock = prevStock + item.quantity;
-
-          const prodRef = doc(db, 'products', item.productId);
-          batch.update(prodRef, {
-            stock: newStock,
-            costPrice: item.costPrice,
-            updatedAt: now
-          });
-
-          const logRef = doc(collection(db, 'stock_logs'));
-          batch.set(logRef, {
-            productId: item.productId,
-            productName: item.productName,
-            previousStock: prevStock,
-            change: item.quantity,
-            newStock,
-            reason: `Purchase Intake ${purchaseData.purchaseNumber}`,
-            type: 'purchase',
-            referenceId: purchaseRef.id,
-            createdBy: purchaseData.createdBy || 'Staff',
-            createdAt: now
-          });
-        }
-      }
-
-      await batch.commit();
-      return purchaseRef.id;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'purchases');
-    }
-  };
-
-  const receivePurchase = async (purchaseId: string) => {
-    try {
-      const purchase = purchases.find(p => p.id === purchaseId);
-      if (!purchase || purchase.receivedStatus === 'received') return;
-
-      const batch = writeBatch(db);
-      const now = new Date().toISOString();
-
-      const purchaseRef = doc(db, 'purchases', purchaseId);
-      batch.update(purchaseRef, {
-        receivedStatus: 'received',
-        receivedDate: now
-      });
-
-      for (const item of purchase.items) {
-        const prod = products.find(p => p.id === item.productId);
-        const prevStock = prod ? prod.stock : 0;
-        const newStock = prevStock + item.quantity;
-
-        const prodRef = doc(db, 'products', item.productId);
-        batch.update(prodRef, {
-          stock: newStock,
-          costPrice: item.costPrice,
-          updatedAt: now
-        });
-
-        const logRef = doc(collection(db, 'stock_logs'));
-        batch.set(logRef, {
-          productId: item.productId,
-          productName: item.productName,
-          previousStock: prevStock,
-          change: item.quantity,
-          newStock,
-          reason: `Stock Received from ${purchase.purchaseNumber}`,
-          type: 'purchase',
-          referenceId: purchaseId,
-          createdBy: user?.displayName || user?.email || 'Staff',
-          createdAt: now
-        });
-      }
-
-      await batch.commit();
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `purchases/${purchaseId}`);
     }
   };
 
@@ -761,43 +601,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Expenses CRUD
-  const addExpense = async (expenseData: Omit<Expense, 'id' | 'createdAt'>) => {
-    try {
-      const now = new Date().toISOString();
-      const docRef = await addDoc(collection(db, 'expenses'), {
-        ...expenseData,
-        createdAt: now
-      });
-      return docRef.id;
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'expenses');
-    }
-  };
-
-  const deleteExpense = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'expenses', id));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `expenses/${id}`);
-    }
-  };
-
-  // Settings
-  const updateSettings = async (newSettings: Partial<StoreSettings>) => {
-    try {
-      const docRef = doc(db, 'store_settings', 'general');
-      await setDoc(docRef, {
-        ...settings,
-        ...newSettings,
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-      setSettings(prev => ({ ...prev, ...newSettings }));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'store_settings/general');
-    }
-  };
-
   // Seed sample initial data if store is empty
   const seedInitialData = async () => {
     try {
@@ -825,18 +628,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const catRef = doc(collection(db, 'categories'));
         batch.set(catRef, { ...cat, createdAt: now, updatedAt: now });
         catMap[cat.name] = catRef.id;
-      }
-
-      // Suppliers
-      const suppliersData = [
-        { name: 'Apex Roasters Co.', contactPerson: 'Marcus Vance', email: 'orders@apexroasters.com', phone: '+1 (555) 301-8841', address: '120 Roastery Way, Seattle, WA', suppliedCategories: 'Beverages & Coffee' },
-        { name: 'Golden Harvest Bakery Supply', contactPerson: 'Elena Rossi', email: 'sales@goldenharvest.io', phone: '+1 (555) 749-1120', address: '88 Baker St, Portland, OR', suppliedCategories: 'Fresh Bakery & Snacks' },
-        { name: 'VoltTech Global Imports', contactPerson: 'David Chen', email: 'supply@volttech.com', phone: '+1 (555) 923-4411', address: '440 Silicon Ave, San Jose, CA', suppliedCategories: 'Electronics & Tech' },
-      ];
-
-      for (const sup of suppliersData) {
-        const supRef = doc(collection(db, 'suppliers'));
-        batch.set(supRef, { ...sup, createdAt: now, updatedAt: now });
       }
 
       // Customers
@@ -993,22 +784,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      // Initial Expenses (in INR)
-      const sampleExpenses = [
-        { title: 'Store Monthly Rent (Main Branch)', category: 'Rent' as const, amount: 45000, paymentMethod: 'Bank Transfer', reference: 'RENT-NOV-2026', notes: 'Monthly lease payment', date: new Date().toISOString().split('T')[0] },
-        { title: 'High-Speed Fiber Internet & POS Line', category: 'Utilities' as const, amount: 2499, paymentMethod: 'Card', reference: 'UTIL-NET-88', notes: 'Commercial internet connection', date: new Date().toISOString().split('T')[0] },
-        { title: 'Thermal Receipt Rolls (Case of 50)', category: 'Supplies' as const, amount: 1250, paymentMethod: 'Cash', reference: 'SUPP-RCPT-12', notes: 'Thermal paper for POS printers', date: new Date().toISOString().split('T')[0] },
-      ];
-
-      for (const exp of sampleExpenses) {
-        const expRef = doc(collection(db, 'expenses'));
-        batch.set(expRef, {
-          ...exp,
-          createdBy: user?.displayName || user?.email || 'Admin',
-          createdAt: now
-        });
-      }
-
       await batch.commit();
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'seed_data');
@@ -1020,11 +795,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       products,
       categories,
       customers,
-      suppliers,
       sales,
-      purchases,
       returns,
-      expenses,
       stockLogs,
       employees,
       settings,
@@ -1041,16 +813,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addCustomer,
       updateCustomer,
       deleteCustomer,
-      addSupplier,
-      updateSupplier,
-      deleteSupplier,
       processSale,
-      addPurchase,
-      receivePurchase,
       processReturn,
-      addExpense,
-      deleteExpense,
-      updateSettings,
       seedInitialData
     }}>
       {children}

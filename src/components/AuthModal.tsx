@@ -1,42 +1,102 @@
-import React, { useState } from 'react';
-import { 
-  Store, 
-  Lock, 
-  Mail, 
-  User, 
-  ShieldCheck, 
-  ArrowRight, 
-  AlertCircle, 
-  CheckCircle2, 
+import React, { useEffect, useState } from 'react';
+import {
+  Store,
+  Lock,
+  Mail,
+  User,
+  ShieldCheck,
+  Briefcase,
+  ShoppingCart,
+  ArrowRight,
+  AlertCircle,
+  CheckCircle2,
   KeyRound,
   Sparkles
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { UserRole } from '../types/store';
 
-export const AuthModal: React.FC = () => {
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail, sendResetEmail } = useAuth();
+const LOGIN_ROLES: Array<{
+  id: UserRole;
+  label: string;
+  subtitle: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  {
+    id: 'admin',
+    label: 'Admin',
+    subtitle: '1 Authorized',
+    icon: ShieldCheck
+  },
+  {
+    id: 'manager',
+    label: 'Manager',
+    subtitle: 'Max 2 Staff',
+    icon: Briefcase
+  },
+  {
+    id: 'billing',
+    label: 'Billing Staff',
+    subtitle: 'Cashier & POS',
+    icon: ShoppingCart
+  }
+];
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
+export const AuthModal: React.FC = () => {
+  const {
+    adminInitialized,
+    adminInitLoading,
+    registerFirstAdmin,
+    signInWithEmail,
+    signUpWithEmail,
+    sendResetEmail
+  } = useAuth();
+
+  const [mode, setMode] = useState<'setup_admin' | 'signin' | 'signup' | 'forgot'>('signin');
+  const [selectedRole, setSelectedRole] = useState<UserRole>('admin');
+  const [registerRole, setRegisterRole] = useState<UserRole>('billing');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
-  const [role, setRole] = useState<UserRole>('admin');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Automatically default to Initial Admin Setup when no Admin has been configured yet
+  useEffect(() => {
+    if (adminInitLoading) return;
+    if (!adminInitialized) {
+      setMode('setup_admin');
+    } else if (mode === 'setup_admin') {
+      setMode('signin');
+    }
+  }, [adminInitialized, adminInitLoading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
-    setLoading(true);
 
+    if (mode === 'setup_admin') {
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.');
+        return;
+      }
+    }
+
+    setLoading(true);
     try {
-      if (mode === 'signin') {
-        await signInWithEmail(email, password);
+      if (mode === 'setup_admin') {
+        await registerFirstAdmin(email, password, name);
+      } else if (mode === 'signin') {
+        await signInWithEmail(email, password, selectedRole);
       } else if (mode === 'signup') {
-        await signUpWithEmail(email, password, name, role);
+        await signUpWithEmail(email, password, name, registerRole);
       } else if (mode === 'forgot') {
         await sendResetEmail(email);
         setSuccessMsg('Password reset email sent! Check your inbox.');
@@ -50,74 +110,9 @@ export const AuthModal: React.FC = () => {
       } else if (msg.includes('weak-password')) {
         setError('Password should be at least 6 characters.');
       } else if (msg.includes('auth/operation-not-allowed') || msg.includes('operation-not-allowed')) {
-        setError('Email/password sign-in is not enabled in Firebase Console. Please sign in using "Continue with Google" above.');
+        setError('Email/password sign-in is not enabled in Firebase Console. Please contact your Store Administrator.');
       } else {
         setError(msg);
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const success = await signInWithGoogle();
-      if (!success) {
-        setError('Sign-in cancelled: The Google sign-in window was closed before completing. Click "Continue with Google" to try again.');
-      }
-    } catch (err: unknown) {
-      const fbErr = err as { code?: string; message?: string };
-      if (
-        fbErr.code === 'auth/popup-closed-by-user' ||
-        fbErr.code === 'auth/cancelled-popup-request' ||
-        fbErr.message?.includes('popup-closed-by-user') ||
-        fbErr.message?.includes('cancelled-popup-request')
-      ) {
-        setError('Sign-in cancelled: The Google popup window was closed. Click below to try again.');
-      } else if (fbErr.code === 'auth/popup-blocked' || fbErr.message?.includes('popup-blocked')) {
-        setError('Sign-in popup was blocked by your browser. Please allow popups for this site and try again.');
-      } else {
-        console.warn('Google sign-in status:', fbErr.message);
-        setError(fbErr.message || 'Google sign-in could not be completed. Please try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Demo Fast Credentials
-  const handleDemoSignIn = async (demoRole: UserRole) => {
-    setError(null);
-    setLoading(true);
-    const demoAccounts: Record<UserRole, { email: string; pass: string; name: string }> = {
-      admin: { email: 'admin@omnistore.internal', pass: 'Admin#2026', name: 'Store Owner' },
-      manager: { email: 'manager@omnistore.internal', pass: 'Manager#2026', name: 'Operations Manager' },
-      billing: { email: 'cashier@omnistore.internal', pass: 'Cashier#2026', name: 'Head Cashier' },
-      inventory: { email: 'stock@omnistore.internal', pass: 'Stock#2026', name: 'Inventory Specialist' },
-    };
-
-    const acc = demoAccounts[demoRole];
-    try {
-      await signInWithEmail(acc.email, acc.pass);
-    } catch (err: unknown) {
-      const fbErr = err as { code?: string; message?: string };
-      if (fbErr.code === 'auth/operation-not-allowed' || fbErr.message?.includes('operation-not-allowed')) {
-        setError('Email/password provider is not yet enabled in your Firebase project. Please use "Continue with Google" above to sign in securely.');
-        setLoading(false);
-        return;
-      }
-      // If demo account not yet created, attempt to sign it up automatically
-      try {
-        await signUpWithEmail(acc.email, acc.pass, acc.name, demoRole);
-      } catch (signupErr: unknown) {
-        const sErr = signupErr as { code?: string; message?: string };
-        if (sErr.code === 'auth/operation-not-allowed' || sErr.message?.includes('operation-not-allowed')) {
-          setError('Email/password provider is not enabled in Firebase Console. Please sign in using "Continue with Google" above.');
-        } else {
-          setError(sErr.message || 'Could not authenticate with demo credentials. Please use "Continue with Google".');
-        }
       }
     } finally {
       setLoading(false);
@@ -142,55 +137,69 @@ export const AuthModal: React.FC = () => {
           </p>
         </div>
 
-        {/* Google One-Click Login */}
-        <button
-          onClick={handleGoogleSignIn}
-          disabled={loading}
-          type="button"
-          className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-900 font-semibold text-sm flex items-center justify-center gap-3 transition shadow-md active:scale-98 disabled:opacity-50 mb-4"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-          </svg>
-          <span>Continue with Google</span>
-        </button>
-
-        {/* Divider */}
-        <div className="flex items-center gap-3 my-4">
-          <div className="flex-1 h-px bg-slate-800" />
-          <span className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">Or with Email</span>
-          <div className="flex-1 h-px bg-slate-800" />
-        </div>
+        {/* Initial Admin Setup Banner (Shown ONLY before the first Admin account is created) */}
+        {!adminInitLoading && !adminInitialized && (
+          <div className="mb-4 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-xs flex items-start gap-2.5">
+            <Sparkles className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-white">Fresh Setup: No Admin Configured</p>
+              <p className="text-[11px] text-indigo-200/80 mt-0.5">
+                Create the first and only authorized Admin account below. Once created, Admin registration locks permanently.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Mode Selector Tabs */}
-        {mode !== 'forgot' ? (
-          <div className="grid grid-cols-2 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-xs font-semibold">
+        {mode === 'forgot' ? (
+          <div className="mb-4">
             <button
               type="button"
-              onClick={() => { setMode('signin'); setError(null); }}
+              onClick={() => { setMode(adminInitialized ? 'signin' : 'setup_admin'); setError(null); setSuccessMsg(null); }}
+              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1"
+            >
+              ← Back
+            </button>
+          </div>
+        ) : !adminInitLoading && !adminInitialized ? (
+          <div className="grid grid-cols-3 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => { setMode('setup_admin'); setError(null); setSuccessMsg(null); }}
+              className={`py-1.5 rounded-lg transition ${mode === 'setup_admin' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+            >
+              Admin Setup
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('signin'); setError(null); setSuccessMsg(null); }}
               className={`py-1.5 rounded-lg transition ${mode === 'signin' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
             >
               Sign In
             </button>
             <button
               type="button"
-              onClick={() => { setMode('signup'); setError(null); }}
+              onClick={() => { setMode('signup'); setError(null); setSuccessMsg(null); }}
               className={`py-1.5 rounded-lg transition ${mode === 'signup' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
             >
               Register Staff
             </button>
           </div>
         ) : (
-          <div className="mb-4">
+          <div className="grid grid-cols-2 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-xs font-semibold">
             <button
               type="button"
-              onClick={() => { setMode('signin'); setError(null); }}
-              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1"
+              onClick={() => { setMode('signin'); setError(null); setSuccessMsg(null); }}
+              className={`py-1.5 rounded-lg transition ${mode === 'signin' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
             >
-              ← Back to Sign In
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('signup'); setError(null); setSuccessMsg(null); }}
+              className={`py-1.5 rounded-lg transition ${mode === 'signup' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+            >
+              Register Staff
             </button>
           </div>
         )}
@@ -211,15 +220,48 @@ export const AuthModal: React.FC = () => {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-3.5">
-          {mode === 'signup' && (
+          {mode === 'signin' && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Full Name</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1.5">Select Role</label>
+              <div className="grid grid-cols-3 gap-2">
+                {LOGIN_ROLES.map((roleOpt) => {
+                  const Icon = roleOpt.icon;
+                  const active = selectedRole === roleOpt.id;
+                  return (
+                    <button
+                      key={roleOpt.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedRole(roleOpt.id);
+                        setError(null);
+                      }}
+                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1 ${
+                        active
+                          ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-md shadow-indigo-600/15'
+                          : 'bg-slate-800/70 border-slate-700/80 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 ${active ? 'text-indigo-400' : 'text-slate-400'}`} />
+                      <span className="text-[11px] font-semibold leading-tight">{roleOpt.label}</span>
+                      <span className="text-[9px] text-slate-400 leading-tight">{roleOpt.subtitle}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {(mode === 'signup' || mode === 'setup_admin') && (
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">
+                {mode === 'setup_admin' ? 'Admin Full Name' : 'Full Name'}
+              </label>
               <div className="relative">
                 <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Alex Morgan"
+                  placeholder="Enter full name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-indigo-500"
@@ -229,13 +271,15 @@ export const AuthModal: React.FC = () => {
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Work Email</label>
+            <label className="block text-xs font-medium text-slate-300 mb-1">
+              {mode === 'setup_admin' ? 'Authorized Admin Email' : 'Work Email'}
+            </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
                 type="email"
                 required
-                placeholder="staff@omnistore.internal"
+                placeholder="name@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-indigo-500"
@@ -250,7 +294,7 @@ export const AuthModal: React.FC = () => {
                 {mode === 'signin' && (
                   <button
                     type="button"
-                    onClick={() => { setMode('forgot'); setError(null); }}
+                    onClick={() => { setMode('forgot'); setError(null); setSuccessMsg(null); }}
                     className="text-[11px] text-indigo-400 hover:text-indigo-300"
                   >
                     Forgot password?
@@ -262,6 +306,7 @@ export const AuthModal: React.FC = () => {
                 <input
                   type="password"
                   required
+                  minLength={6}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -271,32 +316,66 @@ export const AuthModal: React.FC = () => {
             </div>
           )}
 
+          {mode === 'setup_admin' && (
+            <div>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Confirm Admin Password</label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-indigo-500"
+                />
+              </div>
+            </div>
+          )}
+
           {mode === 'signup' && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Store Role</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Assigned Store Role</label>
               <div className="relative">
                 <ShieldCheck className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value as UserRole)}
+                  value={registerRole}
+                  onChange={(e) => {
+                    setRegisterRole(e.target.value as UserRole);
+                    setError(null);
+                  }}
                   className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-indigo-500"
                 >
-                  <option value="admin">Admin (Full Access &amp; Staff)</option>
-                  <option value="manager">Manager (Inventory, POS, Reports)</option>
-                  <option value="billing">Billing Staff (Cashier &amp; POS)</option>
-                  <option value="inventory">Inventory Staff (Stock &amp; Intake)</option>
+                  <option value="admin">Admin</option>
+                  <option value="manager">Manager</option>
+                  <option value="billing">Billing Staff</option>
                 </select>
               </div>
+              <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                {registerRole === 'admin'
+                  ? adminInitialized
+                    ? 'Locked: An authorized Admin account already exists (1 account max).'
+                    : 'No Admin configured yet. Registering will lock this account as the single authorized Admin.'
+                  : registerRole === 'manager'
+                    ? 'Manager role (max 2 accounts) can only be assigned by the authorized Admin in Staff & Roles.'
+                    : 'Admin and Manager roles can only be assigned by the authorized Admin. Standard staff register as Billing Staff.'}
+              </p>
             </div>
           )}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || adminInitLoading}
             className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition active:scale-98 disabled:opacity-50"
           >
             {loading ? (
-              <span>Processing...</span>
+              <span>Verifying Access...</span>
+            ) : mode === 'setup_admin' ? (
+              <>
+                <span>Create First Authorized Admin</span>
+                <ShieldCheck className="w-4 h-4" />
+              </>
             ) : mode === 'signin' ? (
               <>
                 <span>Sign In to Dashboard</span>
@@ -315,44 +394,6 @@ export const AuthModal: React.FC = () => {
             )}
           </button>
         </form>
-
-        {/* Demo Fast Login Cards */}
-        <div className="mt-6 pt-5 border-t border-slate-800">
-          <div className="flex items-center gap-1.5 text-xs text-amber-400 font-semibold mb-2">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>1-Click Demo Accounts (Instant Testing):</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <button
-              onClick={() => handleDemoSignIn('admin')}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-left transition"
-            >
-              <span className="font-semibold text-rose-400 block">👑 Admin</span>
-              <span className="text-[10px] text-slate-400">Full Store Access</span>
-            </button>
-            <button
-              onClick={() => handleDemoSignIn('manager')}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-left transition"
-            >
-              <span className="font-semibold text-indigo-400 block">💼 Manager</span>
-              <span className="text-[10px] text-slate-400">Sales &amp; Inventory</span>
-            </button>
-            <button
-              onClick={() => handleDemoSignIn('billing')}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-left transition"
-            >
-              <span className="font-semibold text-emerald-400 block">💳 Cashier</span>
-              <span className="text-[10px] text-slate-400">POS &amp; Receipts</span>
-            </button>
-            <button
-              onClick={() => handleDemoSignIn('inventory')}
-              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-left transition"
-            >
-              <span className="font-semibold text-amber-400 block">📦 Inventory</span>
-              <span className="text-[10px] text-slate-400">Stock &amp; Intake</span>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

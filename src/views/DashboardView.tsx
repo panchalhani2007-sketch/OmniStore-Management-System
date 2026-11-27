@@ -12,10 +12,8 @@ import {
   CheckCircle2, 
   ShieldAlert, 
   Database, 
-  CreditCard,
   Sparkles,
-  Receipt,
-  BarChart3
+  Receipt
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
@@ -28,7 +26,7 @@ interface DashboardViewProps {
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) => {
-  const { products, sales, expenses, settings, seedInitialData } = useStore();
+  const { products, sales, settings, seedInitialData } = useStore();
   const { role } = useAuth();
 
   const [selectedSaleForReceipt, setSelectedSaleForReceipt] = useState<Sale | null>(null);
@@ -53,13 +51,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
   const totalStockUnits = products.reduce((acc, p) => acc + p.stock, 0);
   const totalInventoryValue = products.reduce((acc, p) => acc + (p.stock * p.costPrice), 0);
 
-  // Expenses & Profit
-  const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+  // Profit Estimate
   const estimatedCogs = sales.reduce((acc, s) => {
     return acc + s.items.reduce((iAcc, item) => iAcc + (item.costPrice * item.quantity), 0);
   }, 0);
   const grossProfit = totalRevenue - estimatedCogs;
-  const netProfit = grossProfit - totalExpenses;
 
   // Recent 5 sales
   const recentSales = sales.slice(0, 5);
@@ -87,7 +83,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
             <div>
               <h3 className="font-bold text-white text-base">Welcome to OmniStore! Empty Database Detected</h3>
               <p className="text-xs text-slate-300 mt-0.5">
-                Populate your store with realistic categories, products, suppliers, customers, and starter inventory in 1 click.
+                Populate your store with realistic categories, products, customers, and starter inventory in 1 click.
               </p>
             </div>
           </div>
@@ -211,20 +207,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
             <Boxes className="w-3.5 h-3.5 text-amber-400" />
             <span>Adjust Inventory</span>
           </button>
-          <button
-            onClick={() => setCurrentTab('expenses')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
-          >
-            <CreditCard className="w-3.5 h-3.5 text-rose-400" />
-            <span>Log Expense</span>
-          </button>
-          <button
-            onClick={() => setCurrentTab('reports')}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
-          >
-            <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
-            <span>Reports</span>
-          </button>
         </div>
       </div>
 
@@ -305,24 +287,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
               <span className="text-slate-400">Est. Cost of Goods Sold (COGS)</span>
               <span className="font-mono text-slate-300">-{formatCurrency(Math.abs(estimatedCogs), currency)}</span>
             </div>
-            <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
-              <span className="text-slate-400 font-medium">Gross Profit</span>
-              <span className="font-mono text-emerald-400 font-semibold">{formatCurrency(grossProfit, currency)}</span>
-            </div>
-            <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
-              <span className="text-slate-400">Total Store Operating Expenses</span>
-              <span className="font-mono text-rose-400">-{formatCurrency(Math.abs(totalExpenses), currency)}</span>
-            </div>
             <div className="flex justify-between items-center pt-2 text-sm">
-              <span className="font-bold text-white">Estimated Net Margin</span>
-              <span className={`font-mono font-bold ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {formatCurrency(netProfit, currency)}
+              <span className="font-bold text-white">Estimated Gross Profit</span>
+              <span className={`font-mono font-bold ${grossProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {formatCurrency(grossProfit, currency)}
               </span>
             </div>
           </div>
 
           <p className="text-[11px] text-slate-500 italic">
-            * Net margin takes into account recorded inventory cost prices and logged store overhead expenses.
+            * Gross profit takes into account recorded inventory cost prices against completed sales revenue.
           </p>
         </div>
 
@@ -334,7 +308,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
           </div>
 
           <div className="space-y-3">
-            {(['cash', 'card', 'upi', 'credit'] as const).map((method) => {
+            {(['cash'] as const).map((method) => {
               const methodSales = sales.filter(s => s.paymentMethod === method);
               const methodTotal = methodSales.reduce((acc, s) => acc + s.grandTotal, 0);
               const pct = totalRevenue > 0 ? (methodTotal / totalRevenue) * 100 : 0;
@@ -349,11 +323,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
                   <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
                     <div 
                       style={{ width: `${pct}%` }} 
-                      className={`h-full ${
-                        method === 'cash' ? 'bg-emerald-500' :
-                        method === 'card' ? 'bg-indigo-500' :
-                        method === 'upi' ? 'bg-amber-500' : 'bg-purple-500'
-                      }`}
+                      className="h-full bg-emerald-500"
                     />
                   </div>
                 </div>

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
-import { Sale, StoreTab } from '../types/store';
+import { Sale, StoreTab, ROLE_PERMISSIONS } from '../types/store';
 import { ReceiptModal } from '../components/ReceiptModal';
 import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
@@ -19,9 +19,9 @@ interface SalesViewProps {
 export const SalesView: React.FC<SalesViewProps> = ({ setCurrentTab, onInitiateReturn }) => {
   const { sales, settings } = useStore();
   const { role } = useAuth();
+  const rolePerm = ROLE_PERMISSIONS[role];
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('all');
   const [selectedSaleForReceipt, setSelectedSaleForReceipt] = useState<Sale | null>(null);
 
   const currency = resolveCurrencySymbol(settings.currencySymbol);
@@ -29,15 +29,14 @@ export const SalesView: React.FC<SalesViewProps> = ({ setCurrentTab, onInitiateR
   // Filter sales
   const filteredSales = useMemo(() => {
     return sales.filter((s) => {
-      const matchesMethod = selectedPaymentMethod === 'all' || s.paymentMethod === selectedPaymentMethod;
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch = !q || 
         s.saleNumber.toLowerCase().includes(q) || 
         (s.customerName && s.customerName.toLowerCase().includes(q)) ||
         s.cashierName.toLowerCase().includes(q);
-      return matchesMethod && matchesSearch;
+      return matchesSearch;
     });
-  }, [sales, searchQuery, selectedPaymentMethod]);
+  }, [sales, searchQuery]);
 
   const totalFilteredRevenue = filteredSales.reduce((acc, s) => acc + s.grandTotal, 0);
 
@@ -51,13 +50,15 @@ export const SalesView: React.FC<SalesViewProps> = ({ setCurrentTab, onInitiateR
             Audit store invoices, review receipts, and issue returns or refunds
           </p>
         </div>
-        <button
-          onClick={() => setCurrentTab('pos')}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/20 transition active:scale-95"
-        >
-          <Receipt className="w-4 h-4" />
-          <span>Launch POS Terminal</span>
-        </button>
+        {rolePerm.canProcessSale && (
+          <button
+            onClick={() => setCurrentTab('pos')}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-600/20 transition active:scale-95"
+          >
+            <Receipt className="w-4 h-4" />
+            <span>Launch POS Terminal</span>
+          </button>
+        )}
       </div>
 
       {/* Filter Bar */}
@@ -74,19 +75,9 @@ export const SalesView: React.FC<SalesViewProps> = ({ setCurrentTab, onInitiateR
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Payment:</span>
-            <select
-              value={selectedPaymentMethod}
-              onChange={(e) => setSelectedPaymentMethod(e.target.value)}
-              className="px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-hidden focus:border-indigo-500"
-            >
-              <option value="all">All Methods</option>
-              <option value="cash">Cash</option>
-              <option value="card">Card</option>
-              <option value="upi">UPI / Digital</option>
-              <option value="credit">Store Credit</option>
-            </select>
+          <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
+            <span className="text-slate-400">Payment Mode: </span>
+            <span className="font-semibold text-emerald-400">Cash</span>
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
             <span className="text-slate-400">Total: </span>
@@ -110,7 +101,7 @@ export const SalesView: React.FC<SalesViewProps> = ({ setCurrentTab, onInitiateR
                   <th className="py-2.5 px-3">Date &amp; Time</th>
                   <th className="py-2.5 px-3">Customer</th>
                   <th className="py-2.5 px-3">Items Sold</th>
-                  <th className="py-2.5 px-3">Tax &amp; Discount</th>
+                  <th className="py-2.5 px-3">Discount</th>
                   <th className="py-2.5 px-3">Grand Total</th>
                   <th className="py-2.5 px-3">Method</th>
                   <th className="py-2.5 px-3">Cashier</th>
@@ -141,9 +132,10 @@ export const SalesView: React.FC<SalesViewProps> = ({ setCurrentTab, onInitiateR
                       </div>
                     </td>
                     <td className="py-3 px-3 font-mono text-[11px] text-slate-400">
-                      <div>Tax: {formatCurrency(sale.taxAmount, currency)}</div>
-                      {sale.discountAmount > 0 && (
-                        <div className="text-emerald-400">Disc: -{formatCurrency(Math.abs(sale.discountAmount), currency)}</div>
+                      {sale.discountAmount > 0 ? (
+                        <div className="text-emerald-400">-{formatCurrency(Math.abs(sale.discountAmount), currency)}</div>
+                      ) : (
+                        <span className="text-slate-500">—</span>
                       )}
                     </td>
                     <td className="py-3 px-3 font-mono text-sm font-bold text-emerald-400">
@@ -166,16 +158,18 @@ export const SalesView: React.FC<SalesViewProps> = ({ setCurrentTab, onInitiateR
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          onClick={() => {
-                            if (onInitiateReturn) onInitiateReturn(sale);
-                            else setCurrentTab('returns');
-                          }}
-                          title="Process Return / Refund"
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-slate-400 hover:text-amber-400 border border-slate-700 transition"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                        </button>
+                        {rolePerm.canProcessReturn && (
+                          <button
+                            onClick={() => {
+                              if (onInitiateReturn) onInitiateReturn(sale);
+                              else setCurrentTab('returns');
+                            }}
+                            title="Process Return / Refund"
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-slate-400 hover:text-amber-400 border border-slate-700 transition"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

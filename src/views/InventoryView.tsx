@@ -81,7 +81,7 @@ export const InventoryView: React.FC = () => {
             <Boxes className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="text-2xl font-bold text-white font-mono">{totalUnits}</div>
-          <span className="text-[11px] text-slate-400 font-medium">{products.length} SKUs Cataloged</span>
+          <span className="text-[11px] text-slate-400 font-medium">{products.length} Products Cataloged</span>
         </div>
 
         <div 
@@ -294,14 +294,11 @@ export const InventoryView: React.FC = () => {
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="bg-slate-800/60 text-slate-400 font-semibold border-b border-slate-800">
                   <tr>
-                    <th className="py-2.5 px-3">Item Name</th>
-                    <th className="py-2.5 px-3">SKU / Barcode</th>
+                    <th className="py-2.5 px-3">Product Name</th>
                     <th className="py-2.5 px-3">Category</th>
-                    <th className="py-2.5 px-3">Cost</th>
-                    <th className="py-2.5 px-3">Price</th>
-                    <th className="py-2.5 px-3">Stock Count</th>
-                    <th className="py-2.5 px-3">Min Alert</th>
-                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3">Price (₹)</th>
+                    <th className="py-2.5 px-3">Selling Price (₹)</th>
+                    <th className="py-2.5 px-3">Stock Quantity</th>
                     {rolePerm.canAdjustStock && (
                       <th className="py-2.5 px-3 text-right">Actions</th>
                     )}
@@ -323,15 +320,8 @@ export const InventoryView: React.FC = () => {
                                 <Package className="w-4 h-4 text-slate-500" />
                               )}
                             </div>
-                            <div>
-                              <div className="font-semibold text-white">{p.name}</div>
-                              <div className="text-[10px] text-slate-400">{p.unit}</div>
-                            </div>
+                            <div className="font-semibold text-white">{p.name}</div>
                           </div>
-                        </td>
-                        <td className="py-3 px-3 font-mono text-[11px] text-slate-400">
-                          <div>{p.sku}</div>
-                          {p.barcode && <div className="text-[10px] text-slate-500">{p.barcode}</div>}
                         </td>
                         <td className="py-3 px-3 text-slate-300">
                           {p.categoryName || 'Uncategorized'}
@@ -348,25 +338,6 @@ export const InventoryView: React.FC = () => {
                           }`}>
                             {p.stock}
                           </span>
-                          <span className="text-[10px] text-slate-400 ml-1">{p.unit}</span>
-                        </td>
-                        <td className="py-3 px-3 font-mono text-slate-400">
-                          {p.minStockAlert} {p.unit}
-                        </td>
-                        <td className="py-3 px-3">
-                          {isOut ? (
-                            <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] font-bold">
-                              Out of Stock
-                            </span>
-                          ) : isLow ? (
-                            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold">
-                              Low Stock Alert
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-semibold">
-                              Healthy
-                            </span>
-                          )}
                         </td>
                         {rolePerm.canAdjustStock && (
                           <td className="py-3 px-3 text-right">

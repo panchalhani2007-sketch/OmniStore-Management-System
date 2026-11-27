@@ -9,7 +9,6 @@ import {
   AlertCircle,
   X,
   Check,
-  Percent,
   Tag
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
@@ -40,28 +39,17 @@ export const ProductsView: React.FC = () => {
   const [inlineCatCreating, setInlineCatCreating] = useState(false);
   const [inlineCatError, setInlineCatError] = useState<string | null>(null);
 
-  // Form states
+  // Form states (5 simplified required fields)
   const [name, setName] = useState('');
-  const [sku, setSku] = useState('');
-  const [barcode, setBarcode] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [costPrice, setCostPrice] = useState<number>(0);
-  const [sellingPrice, setSellingPrice] = useState<number>(0);
-  const [stock, setStock] = useState<number>(0);
-  const [minStockAlert, setMinStockAlert] = useState<number>(10);
-  const [unit, setUnit] = useState('pcs');
-  const [description, setDescription] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [price, setPrice] = useState<string>('');
+  const [sellingPrice, setSellingPrice] = useState<string>('');
+  const [stock, setStock] = useState<string>('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const currency = resolveCurrencySymbol(settings.currencySymbol);
-
-  // Gross profit margin calculation
-  const marginPercent = sellingPrice > 0 
-    ? (((sellingPrice - costPrice) / sellingPrice) * 100).toFixed(1) 
-    : '0';
 
   // Filtered products
   const filteredProducts = useMemo(() => {
@@ -79,16 +67,10 @@ export const ProductsView: React.FC = () => {
   const openCreateModal = () => {
     setEditingProduct(null);
     setName('');
-    setSku(`SKU-${Date.now().toString().slice(-5)}`);
-    setBarcode(`890${Math.floor(100000000 + Math.random() * 900000000)}`);
     setCategoryId(categories[0]?.id || '');
-    setCostPrice(0);
-    setSellingPrice(0);
-    setStock(0);
-    setMinStockAlert(10);
-    setUnit('pcs');
-    setDescription('');
-    setImageUrl('');
+    setPrice('');
+    setSellingPrice('');
+    setStock('');
     setError(null);
     setIsModalOpen(true);
   };
@@ -96,16 +78,14 @@ export const ProductsView: React.FC = () => {
   const openEditModal = (p: Product) => {
     setEditingProduct(p);
     setName(p.name);
-    setSku(p.sku);
-    setBarcode(p.barcode || '');
-    setCategoryId(p.categoryId || '');
-    setCostPrice(p.costPrice);
-    setSellingPrice(p.sellingPrice);
-    setStock(p.stock);
-    setMinStockAlert(p.minStockAlert);
-    setUnit(p.unit || 'pcs');
-    setDescription(p.description || '');
-    setImageUrl(p.imageUrl || '');
+    const matchedById = p.categoryId && categories.some(c => c.id === p.categoryId);
+    const matchedByName = !matchedById && p.categoryName
+      ? categories.find(c => c.name.toLowerCase() === p.categoryName.toLowerCase())?.id
+      : undefined;
+    setCategoryId(matchedById ? p.categoryId : (matchedByName || p.categoryId || categories[0]?.id || ''));
+    setPrice(String(p.costPrice ?? 0));
+    setSellingPrice(String(p.sellingPrice ?? 0));
+    setStock(String(p.stock ?? 0));
     setError(null);
     setIsModalOpen(true);
   };
@@ -139,13 +119,35 @@ export const ProductsView: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !sku.trim()) {
-      setError('Product Name and SKU are required.');
+
+    const trimmedName = name.trim();
+    const parsedPrice = parseFloat(price);
+    const parsedSellingPrice = parseFloat(sellingPrice);
+    const parsedStock = parseInt(stock, 10);
+
+    if (!trimmedName) {
+      setError('Product Name is required.');
+      return;
+    }
+    if (!categoryId) {
+      setError('Category is required.');
+      return;
+    }
+    if (price.trim() === '' || Number.isNaN(parsedPrice) || parsedPrice < 0) {
+      setError('Valid Price (₹) is required.');
+      return;
+    }
+    if (sellingPrice.trim() === '' || Number.isNaN(parsedSellingPrice) || parsedSellingPrice < 0) {
+      setError('Valid Selling Price (₹) is required.');
+      return;
+    }
+    if (stock.trim() === '' || Number.isNaN(parsedStock) || parsedStock < 0) {
+      setError('Valid Stock Quantity is required.');
       return;
     }
 
     const catObj = categories.find(c => c.id === categoryId);
-    const categoryName = catObj ? catObj.name : 'General';
+    const categoryName = catObj ? catObj.name : (editingProduct?.categoryName || 'General');
 
     try {
       setIsSubmitting(true);
@@ -153,36 +155,30 @@ export const ProductsView: React.FC = () => {
 
       if (editingProduct) {
         await updateProduct(editingProduct.id, {
-          name: name.trim(),
-          sku: sku.trim(),
-          barcode: barcode.trim(),
+          name: trimmedName,
           categoryId,
           categoryName,
-          costPrice,
-          sellingPrice,
-          minStockAlert,
-          unit,
-          description: description.trim(),
-          imageUrl: imageUrl.trim()
+          costPrice: parsedPrice,
+          sellingPrice: parsedSellingPrice
         });
-        if (rolePerm.canAdjustStock && stock !== editingProduct.stock) {
-          const delta = stock - editingProduct.stock;
-          await adjustStock(editingProduct.id, delta, 'Updated from Product Editor');
+        if (rolePerm.canAdjustStock && parsedStock !== editingProduct.stock) {
+          const delta = parsedStock - editingProduct.stock;
+          await adjustStock(editingProduct.id, delta, 'Updated from Edit Product');
         }
       } else {
         await addProduct({
-          name: name.trim(),
-          sku: sku.trim(),
-          barcode: barcode.trim(),
+          name: trimmedName,
+          sku: `PRD-${Date.now().toString().slice(-5)}`,
+          barcode: '',
           categoryId,
           categoryName,
-          costPrice,
-          sellingPrice,
-          stock,
-          minStockAlert,
-          unit,
-          description: description.trim(),
-          imageUrl: imageUrl.trim(),
+          costPrice: parsedPrice,
+          sellingPrice: parsedSellingPrice,
+          stock: parsedStock,
+          minStockAlert: 10,
+          unit: 'pcs',
+          description: '',
+          imageUrl: '',
           status: 'active'
         });
       }
@@ -276,7 +272,6 @@ export const ProductsView: React.FC = () => {
               <thead className="bg-slate-800/60 text-slate-400 font-semibold border-b border-slate-800">
                 <tr>
                   <th className="py-2.5 px-3">Product</th>
-                  <th className="py-2.5 px-3">SKU / Barcode</th>
                   <th className="py-2.5 px-3">Category</th>
                   <th className="py-2.5 px-3">Cost</th>
                   <th className="py-2.5 px-3">Price</th>
@@ -309,10 +304,6 @@ export const ProductsView: React.FC = () => {
                             <span className="text-[10px] text-slate-400 line-clamp-1">{p.description || 'No description'}</span>
                           </div>
                         </div>
-                      </td>
-                      <td className="py-3 px-3 font-mono text-[11px] text-slate-300">
-                        <div className="font-semibold text-indigo-300">{p.sku}</div>
-                        {p.barcode && <div className="text-[10px] text-slate-500">{p.barcode}</div>}
                       </td>
                       <td className="py-3 px-3 text-slate-300">
                         <span className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[10px]">
@@ -406,174 +397,110 @@ export const ProductsView: React.FC = () => {
                 </div>
               )}
 
-              {/* Basic Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-slate-300 font-medium mb-1">Product Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Signature Dark Roast Coffee"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-hidden focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">SKU / Item Code *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. COF-DRK-01"
-                    value={sku}
-                    onChange={(e) => setSku(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:outline-hidden focus:border-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Barcode / UPC</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 890123450001"
-                    value={barcode}
-                    onChange={(e) => setBarcode(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:outline-hidden focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Category & Unit */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-slate-300 font-medium">Category</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setInlineCatError(null);
-                        setInlineCatName('');
-                        setInlineCatCode('');
-                        setShowInlineCategoryModal(true);
-                      }}
-                      className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-0.5"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>+ New Category</span>
-                    </button>
-                  </div>
-                  <select
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-hidden focus:border-indigo-500"
-                  >
-                    <option value="">-- Choose Category --</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.code})
-                      </option>
-                    ))}
-                    <option value="general">General / Other</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Measurement Unit</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. pcs, kg, box, bottle, loaf"
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-hidden focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Pricing & Margins */}
-              <div className="p-3.5 rounded-xl bg-slate-800/40 border border-slate-800 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-slate-300 font-medium mb-1">Cost Price ({currency})</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      required
-                      value={costPrice || ''}
-                      onChange={(e) => setCostPrice(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:outline-hidden focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-300 font-medium mb-1">Selling Price ({currency})</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      required
-                      value={sellingPrice || ''}
-                      onChange={(e) => setSellingPrice(parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:outline-hidden focus:border-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-300 font-medium mb-1">Profit Margin</label>
-                    <div className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-emerald-400 font-mono font-bold flex items-center justify-between">
-                      <span>{marginPercent}%</span>
-                      <Percent className="w-3.5 h-3.5 text-slate-500" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Inventory Stock Levels */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">
-                    {editingProduct ? 'Quantity in Stock' : 'Initial Stock Quantity'}
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    disabled={!!editingProduct && !rolePerm.canAdjustStock}
-                    value={stock}
-                    onChange={(e) => setStock(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:outline-hidden focus:border-indigo-500 disabled:opacity-50"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 font-medium mb-1">Low Stock Alert Threshold</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={minStockAlert || ''}
-                    onChange={(e) => setMinStockAlert(parseInt(e.target.value) || 1)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:outline-hidden focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Image URL & Description */}
+              {/* 1. Product Name */}
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Product Image URL (Optional)</label>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Product Name <span className="text-rose-400">*</span>
+                </label>
                 <input
-                  type="url"
-                  placeholder="https://images.unsplash.com/photo-..."
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
+                  type="text"
+                  required
+                  placeholder="e.g. Signature Dark Roast Coffee"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-hidden focus:border-indigo-500"
                 />
               </div>
 
+              {/* 2. Category */}
               <div>
-                <label className="block text-slate-300 font-medium mb-1">Product Description</label>
-                <textarea
-                  rows={2}
-                  placeholder="Brief details about the item..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-medium">
+                    Category <span className="text-rose-400">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInlineCatError(null);
+                      setInlineCatName('');
+                      setInlineCatCode('');
+                      setShowInlineCategoryModal(true);
+                    }}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-0.5"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>New Category</span>
+                  </button>
+                </div>
+                <select
+                  required
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-hidden focus:border-indigo-500"
+                >
+                  <option value="">-- Select Category --</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                  {editingProduct?.categoryId && !categories.some(c => c.id === editingProduct.categoryId) && (
+                    <option value={editingProduct.categoryId}>
+                      {editingProduct.categoryName || editingProduct.categoryId}
+                    </option>
+                  )}
+                </select>
+              </div>
+
+              {/* 3. Price (₹) & 4. Selling Price (₹) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Price (₹) <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    placeholder="0.00"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:outline-hidden focus:border-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-medium mb-1">
+                    Selling Price (₹) <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    placeholder="0.00"
+                    value={sellingPrice}
+                    onChange={(e) => setSellingPrice(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:outline-hidden focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* 5. Stock Quantity */}
+              <div>
+                <label className="block text-slate-300 font-medium mb-1">
+                  Stock Quantity <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  required
+                  placeholder="0"
+                  disabled={!!editingProduct && !rolePerm.canAdjustStock}
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono focus:outline-hidden focus:border-indigo-500 disabled:opacity-50"
                 />
               </div>
 

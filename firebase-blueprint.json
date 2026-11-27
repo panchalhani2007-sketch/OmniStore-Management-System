@@ -7,13 +7,46 @@
       "properties": {
         "email": { "type": "string" },
         "name": { "type": "string" },
-        "role": { "type": "string", "enum": ["admin", "manager", "billing", "inventory"] },
+        "role": { "type": "string", "enum": ["admin", "manager", "billing"] },
         "phone": { "type": "string" },
         "status": { "type": "string", "enum": ["active", "inactive"] },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
       "required": ["email", "name", "role", "status"]
+    },
+    "AdminLock": {
+      "title": "AdminLock",
+      "description": "Immutable singleton binding the single authorized Admin UID and email",
+      "type": "object",
+      "properties": {
+        "adminUid": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "locked": { "type": "boolean" },
+        "claimedAt": { "type": "string" }
+      },
+      "required": ["adminUid", "adminEmail", "locked", "claimedAt"]
+    },
+    "AdminStatus": {
+      "title": "AdminStatus",
+      "description": "Non-PII public indicator showing whether the initial Admin account has been configured",
+      "type": "object",
+      "properties": {
+        "locked": { "type": "boolean" },
+        "claimedAt": { "type": "string" }
+      },
+      "required": ["locked", "claimedAt"]
+    },
+    "ManagerSlot": {
+      "title": "ManagerSlot",
+      "description": "Fixed-capacity backend slot (slot_1, slot_2) enforcing maximum 2 Manager accounts",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "assignedAt": { "type": "string" }
+      },
+      "required": ["userId", "email", "assignedAt"]
     },
     "Category": {
       "title": "Category",
@@ -94,11 +127,9 @@
         "customerId": { "type": "string" },
         "customerName": { "type": "string" },
         "subtotal": { "type": "number" },
-        "taxRate": { "type": "number" },
-        "taxAmount": { "type": "number" },
         "discountAmount": { "type": "number" },
         "grandTotal": { "type": "number" },
-        "paymentMethod": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["cash"] },
         "paymentStatus": { "type": "string" },
         "cashierId": { "type": "string" },
         "cashierName": { "type": "string" },
@@ -176,7 +207,7 @@
     },
     "StoreSettings": {
       "title": "StoreSettings",
-      "description": "Store configuration, currency, tax and metadata",
+      "description": "Store configuration, currency and metadata",
       "type": "object",
       "properties": {
         "storeName": { "type": "string" },
@@ -184,7 +215,6 @@
         "phone": { "type": "string" },
         "email": { "type": "string" },
         "currencySymbol": { "type": "string" },
-        "taxRate": { "type": "number" },
         "receiptFooter": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
@@ -195,6 +225,14 @@
     "/users/{userId}": {
       "schema": "UserProfile",
       "description": "User profiles with role assignment"
+    },
+    "/system_config/{docId}": {
+      "schema": "AdminStatus",
+      "description": "Initial Admin setup lock (admin_lock) and public setup status (admin_status)"
+    },
+    "/manager_slots/{slotId}": {
+      "schema": "ManagerSlot",
+      "description": "Fixed-capacity slot enforcement for max 2 managers (slot_1 and slot_2)"
     },
     "/categories/{categoryId}": {
       "schema": "Category",
