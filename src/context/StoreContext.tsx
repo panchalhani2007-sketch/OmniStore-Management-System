@@ -32,6 +32,7 @@ import {
   UserProfile 
 } from '../types/store';
 import { handleFirestoreError, OperationType } from '../firebase/errors';
+import { resolveCurrencySymbol } from '../utils/currency';
 
 interface StoreContextType {
   products: Product[];
@@ -87,7 +88,7 @@ const defaultSettings: StoreSettings = {
   address: '742 Evergreen Terrace, Springfield, OR',
   phone: '+1 (555) 438-9201',
   email: 'contact@omnistore.internal',
-  currencySymbol: '$',
+  currencySymbol: '₹',
   taxRate: 8.5,
   receiptFooter: 'Thank you for shopping with us! Please retain this receipt for returns within 14 days.',
 };
@@ -95,7 +96,9 @@ const defaultSettings: StoreSettings = {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const canManageSettingsRef = React.useRef(false);
+  canManageSettingsRef.current = role === 'admin' || role === 'manager';
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -237,7 +240,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       doc(db, 'store_settings', 'general'),
       (snapshot) => {
         if (snapshot.exists()) {
-          setSettings({ id: 'general', ...snapshot.data() } as StoreSettings);
+          const data = snapshot.data() as Partial<StoreSettings>;
+          const resolvedCurrency = resolveCurrencySymbol(data.currencySymbol);
+          setSettings({ ...defaultSettings, ...data, id: 'general', currencySymbol: resolvedCurrency });
+
+          // Persist INR symbol back to Firestore if legacy '$' was stored and user can manage settings
+          if ((!data.currencySymbol || data.currencySymbol.trim() === '$') && canManageSettingsRef.current) {
+            updateDoc(doc(db, 'store_settings', 'general'), {
+              currencySymbol: '₹',
+              updatedAt: new Date().toISOString()
+            }).catch(() => {});
+          }
         }
       },
       (error) => handleFirestoreError(error, OperationType.GET, 'store_settings/general')
@@ -828,10 +841,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       // Customers
       const customersData = [
-        { name: 'Sarah Jenkins', email: 'sarah.j@example.com', phone: '+1 (555) 234-5678', address: '45 Elm Street, Springfield', totalPurchases: 3, totalSpent: 124.50 },
-        { name: 'Michael Chang', email: 'mchang@example.com', phone: '+1 (555) 876-5432', address: '890 Maple Ave, Springfield', totalPurchases: 5, totalSpent: 289.00 },
-        { name: 'Emma Watson', email: 'emma.w@example.com', phone: '+1 (555) 345-6789', address: '12 Oak Lane, Springfield', totalPurchases: 1, totalSpent: 45.00 },
-        { name: 'Alex Rivera', email: 'alex.rivera@example.com', phone: '+1 (555) 901-2345', address: '77 Pine Blvd, Springfield', totalPurchases: 0, totalSpent: 0 },
+        { name: 'Sarah Jenkins', email: 'sarah.j@example.com', phone: '+91 98201 23456', address: '45 MG Road, Bengaluru', totalPurchases: 3, totalSpent: 4850 },
+        { name: 'Michael Chang', email: 'mchang@example.com', phone: '+91 98111 87654', address: '890 Linking Road, Mumbai', totalPurchases: 5, totalSpent: 12400 },
+        { name: 'Emma Watson', email: 'emma.w@example.com', phone: '+91 98450 34567', address: '12 Park Street, Kolkata', totalPurchases: 1, totalSpent: 1650 },
+        { name: 'Alex Rivera', email: 'alex.rivera@example.com', phone: '+91 98765 90123', address: '77 Connaught Place, New Delhi', totalPurchases: 0, totalSpent: 0 },
       ];
 
       for (const cust of customersData) {
@@ -839,20 +852,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         batch.set(custRef, { ...cust, createdAt: now, updatedAt: now });
       }
 
-      // Products (Healthy, Low Stock, and Out of Stock)
+      // Products (Healthy, Low Stock, and Out of Stock - priced in INR)
       const productsData = [
         {
           name: 'Signature Dark Roast Coffee (500g)',
           sku: 'COF-DRK-01',
           barcode: '890123450001',
           categoryName: 'Beverages & Coffee',
-          costPrice: 9.50,
-          sellingPrice: 16.99,
+          costPrice: 450,
+          sellingPrice: 799,
           stock: 45,
           minStockAlert: 15,
           unit: 'bag',
           imageUrl: 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?w=400&q=80',
-          description: 'Single-origin Colombian dark roast with chocolate and caramel notes',
+          description: 'Single-origin dark roast with chocolate and caramel notes',
           status: 'active' as const
         },
         {
@@ -860,8 +873,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           sku: 'BEV-OAT-02',
           barcode: '890123450002',
           categoryName: 'Beverages & Coffee',
-          costPrice: 2.20,
-          sellingPrice: 4.49,
+          costPrice: 160,
+          sellingPrice: 249,
           stock: 8, // Low Stock
           minStockAlert: 12,
           unit: 'carton',
@@ -874,8 +887,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           sku: 'BAK-SRD-03',
           barcode: '890123450003',
           categoryName: 'Fresh Bakery & Snacks',
-          costPrice: 3.00,
-          sellingPrice: 6.99,
+          costPrice: 120,
+          sellingPrice: 220,
           stock: 22,
           minStockAlert: 10,
           unit: 'loaf',
@@ -888,8 +901,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           sku: 'TECH-CBL-04',
           barcode: '890123450004',
           categoryName: 'Electronics & Tech',
-          costPrice: 4.80,
-          sellingPrice: 12.99,
+          costPrice: 250,
+          sellingPrice: 499,
           stock: 0, // Out of Stock
           minStockAlert: 10,
           unit: 'pcs',
@@ -902,8 +915,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           sku: 'TECH-MSE-05',
           barcode: '890123450005',
           categoryName: 'Electronics & Tech',
-          costPrice: 12.00,
-          sellingPrice: 24.99,
+          costPrice: 650,
+          sellingPrice: 1299,
           stock: 14,
           minStockAlert: 5,
           unit: 'pcs',
@@ -916,8 +929,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           sku: 'PNT-OIL-06',
           barcode: '890123450006',
           categoryName: 'Household & Pantry',
-          costPrice: 7.50,
-          sellingPrice: 14.50,
+          costPrice: 550,
+          sellingPrice: 999,
           stock: 5, // Low Stock
           minStockAlert: 10,
           unit: 'bottle',
@@ -930,13 +943,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           sku: 'CARE-SOP-07',
           barcode: '890123450007',
           categoryName: 'Personal Care',
-          costPrice: 1.80,
-          sellingPrice: 4.25,
+          costPrice: 110,
+          sellingPrice: 249,
           stock: 30,
           minStockAlert: 10,
           unit: 'bar',
           imageUrl: 'https://images.unsplash.com/photo-1607006314639-c5ec598d1a10?w=400&q=80',
-          description: 'Handcrafted moisturizing soap enriched with pure French essential oils',
+          description: 'Handcrafted moisturizing soap enriched with pure essential oils',
           status: 'active' as const
         },
         {
@@ -944,8 +957,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           sku: 'BEV-SPK-08',
           barcode: '890123450008',
           categoryName: 'Beverages & Coffee',
-          costPrice: 3.50,
-          sellingPrice: 7.99,
+          costPrice: 220,
+          sellingPrice: 399,
           stock: 0, // Out of stock
           minStockAlert: 8,
           unit: 'pack',
@@ -980,11 +993,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      // Initial Expenses
+      // Initial Expenses (in INR)
       const sampleExpenses = [
-        { title: 'Store Monthly Rent (Main St Branch)', category: 'Rent' as const, amount: 1850, paymentMethod: 'Bank Transfer', reference: 'RENT-NOV-2026', notes: 'Monthly lease payment', date: new Date().toISOString().split('T')[0] },
-        { title: 'High-Speed Fiber Internet & POS Line', category: 'Utilities' as const, amount: 89.99, paymentMethod: 'Card', reference: 'UTIL-NET-88', notes: 'Commercial internet connection', date: new Date().toISOString().split('T')[0] },
-        { title: 'Thermal Receipt Rolls (Case of 50)', category: 'Supplies' as const, amount: 45.00, paymentMethod: 'Cash', reference: 'SUPP-RCPT-12', notes: 'Thermal paper for POS printers', date: new Date().toISOString().split('T')[0] },
+        { title: 'Store Monthly Rent (Main Branch)', category: 'Rent' as const, amount: 45000, paymentMethod: 'Bank Transfer', reference: 'RENT-NOV-2026', notes: 'Monthly lease payment', date: new Date().toISOString().split('T')[0] },
+        { title: 'High-Speed Fiber Internet & POS Line', category: 'Utilities' as const, amount: 2499, paymentMethod: 'Card', reference: 'UTIL-NET-88', notes: 'Commercial internet connection', date: new Date().toISOString().split('T')[0] },
+        { title: 'Thermal Receipt Rolls (Case of 50)', category: 'Supplies' as const, amount: 1250, paymentMethod: 'Cash', reference: 'SUPP-RCPT-12', notes: 'Thermal paper for POS printers', date: new Date().toISOString().split('T')[0] },
       ];
 
       for (const exp of sampleExpenses) {

@@ -3,16 +3,13 @@ import {
   Receipt, 
   Search, 
   RotateCcw, 
-  Eye, 
-  Calendar, 
-  CreditCard, 
-  User, 
-  DollarSign 
+  Eye
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Sale, StoreTab } from '../types/store';
 import { ReceiptModal } from '../components/ReceiptModal';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 interface SalesViewProps {
   setCurrentTab: (tab: StoreTab) => void;
@@ -27,7 +24,7 @@ export const SalesView: React.FC<SalesViewProps> = ({ setCurrentTab, onInitiateR
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('all');
   const [selectedSaleForReceipt, setSelectedSaleForReceipt] = useState<Sale | null>(null);
 
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
 
   // Filter sales
   const filteredSales = useMemo(() => {
@@ -93,7 +90,7 @@ export const SalesView: React.FC<SalesViewProps> = ({ setCurrentTab, onInitiateR
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
             <span className="text-slate-400">Total: </span>
-            <span className="font-mono font-bold text-emerald-400">{currency}{totalFilteredRevenue.toFixed(2)}</span>
+            <span className="font-mono font-bold text-emerald-400">{formatCurrency(totalFilteredRevenue, currency)}</span>
           </div>
         </div>
       </div>
@@ -144,13 +141,13 @@ export const SalesView: React.FC<SalesViewProps> = ({ setCurrentTab, onInitiateR
                       </div>
                     </td>
                     <td className="py-3 px-3 font-mono text-[11px] text-slate-400">
-                      <div>Tax: {currency}{sale.taxAmount.toFixed(2)}</div>
+                      <div>Tax: {formatCurrency(sale.taxAmount, currency)}</div>
                       {sale.discountAmount > 0 && (
-                        <div className="text-emerald-400">Disc: -{currency}{sale.discountAmount.toFixed(2)}</div>
+                        <div className="text-emerald-400">Disc: -{formatCurrency(Math.abs(sale.discountAmount), currency)}</div>
                       )}
                     </td>
                     <td className="py-3 px-3 font-mono text-sm font-bold text-emerald-400">
-                      {currency}{sale.grandTotal.toFixed(2)}
+                      {formatCurrency(sale.grandTotal, currency)}
                     </td>
                     <td className="py-3 px-3">
                       <span className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[10px] uppercase font-semibold text-slate-300">

@@ -26,6 +26,7 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Product, CartItem, Sale, SaleItem } from '../types/store';
 import { ReceiptModal } from '../components/ReceiptModal';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 export const POSBillingView: React.FC = () => {
   const { 
@@ -73,7 +74,7 @@ export const POSBillingView: React.FC = () => {
   const [isQuickSearchFocused, setIsQuickSearchFocused] = useState(false);
   const quickSearchRef = useRef<HTMLDivElement>(null);
 
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
   const taxRate = settings.taxRate ?? 8.5;
 
   // Close quick search dropdown on outside click
@@ -243,7 +244,7 @@ export const POSBillingView: React.FC = () => {
     }
 
     if (paymentMethod === 'cash' && cashNum > 0 && cashNum < grandTotal) {
-      setError(`Cash tendered (${currency}${cashNum.toFixed(2)}) is less than total amount (${currency}${grandTotal.toFixed(2)})`);
+      setError(`Cash tendered (${formatCurrency(cashNum, currency)}) is less than total amount (${formatCurrency(grandTotal, currency)})`);
       return;
     }
 
@@ -573,7 +574,7 @@ export const POSBillingView: React.FC = () => {
                     <div>
                       <span className="text-[10px] text-slate-400 block leading-none">Price</span>
                       <span className="text-sm sm:text-base font-bold text-emerald-400 font-mono">
-                        {currency}{product.sellingPrice.toFixed(2)}
+                        {formatCurrency(product.sellingPrice, currency)}
                       </span>
                     </div>
 
@@ -650,7 +651,7 @@ export const POSBillingView: React.FC = () => {
                         {product.sku}
                       </td>
                       <td className="py-2.5 px-3 text-right font-bold text-emerald-400 font-mono text-xs">
-                        {currency}{product.sellingPrice.toFixed(2)}
+                        {formatCurrency(product.sellingPrice, currency)}
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         {isOutOfStock ? (
@@ -777,7 +778,7 @@ export const POSBillingView: React.FC = () => {
                         </div>
                         <div className="text-right">
                           <span className="text-xs font-bold text-emerald-400 font-mono block">
-                            {currency}{prod.sellingPrice.toFixed(2)}
+                            {formatCurrency(prod.sellingPrice, currency)}
                           </span>
                           <span className="text-[10px] text-indigo-400 font-semibold">
                             {isOut ? 'Unavailable' : '+ Add to Order'}
@@ -891,7 +892,7 @@ export const POSBillingView: React.FC = () => {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-white truncate">{item.product.name}</p>
                       <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono mt-0.5">
-                        <span>{currency}{item.product.sellingPrice.toFixed(2)} / {item.product.unit}</span>
+                        <span>{formatCurrency(item.product.sellingPrice, currency)} / {item.product.unit}</span>
                         <span>•</span>
                         <span className="text-slate-500">Max: {maxStock}</span>
                       </div>
@@ -936,7 +937,7 @@ export const POSBillingView: React.FC = () => {
                     {/* Item Total & Remove */}
                     <div className="text-right min-w-[65px]">
                       <p className="font-bold text-emerald-400 font-mono text-xs">
-                        {currency}{item.total.toFixed(2)}
+                        {formatCurrency(item.total, currency)}
                       </p>
                       <button
                         type="button"
@@ -983,26 +984,26 @@ export const POSBillingView: React.FC = () => {
             <div className="space-y-1.5 p-3 rounded-xl bg-slate-800/40 border border-slate-800/80 text-[11px] text-slate-400">
               <div className="flex justify-between">
                 <span>Subtotal:</span>
-                <span className="font-mono text-slate-200">{currency}{subtotal.toFixed(2)}</span>
+                <span className="font-mono text-slate-200">{formatCurrency(subtotal, currency)}</span>
               </div>
               
               {discountAmount > 0 && (
                 <div className="flex justify-between text-emerald-400">
                   <span>Discount Applied:</span>
-                  <span className="font-mono">-{currency}{discountAmount.toFixed(2)}</span>
+                  <span className="font-mono">-{formatCurrency(Math.abs(discountAmount), currency)}</span>
                 </div>
               )}
 
               {/* Explicit GST line item */}
               <div className="flex justify-between">
                 <span>GST ({taxRate}%):</span>
-                <span className="font-mono text-slate-200">{currency}{taxAmount.toFixed(2)}</span>
+                <span className="font-mono text-slate-200">{formatCurrency(taxAmount, currency)}</span>
               </div>
 
               {/* Grand Total */}
               <div className="flex justify-between text-sm sm:text-base font-bold text-white pt-2 border-t border-slate-700">
                 <span>Final Total:</span>
-                <span className="font-mono text-emerald-400">{currency}{grandTotal.toFixed(2)}</span>
+                <span className="font-mono text-emerald-400">{formatCurrency(grandTotal, currency)}</span>
               </div>
             </div>
 
@@ -1081,7 +1082,7 @@ export const POSBillingView: React.FC = () => {
                   <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-700">
                     <span className="text-emerald-400 font-semibold">Change to Return:</span>
                     <span className="font-mono font-bold text-emerald-400 text-sm">
-                      {currency}{changeDue.toFixed(2)}
+                      {formatCurrency(changeDue, currency)}
                     </span>
                   </div>
                 )}
@@ -1107,7 +1108,7 @@ export const POSBillingView: React.FC = () => {
               <span>
                 {isProcessing 
                   ? 'Generating Bill & Saving Sale...' 
-                  : `Generate Bill (${currency}${grandTotal.toFixed(2)})`}
+                  : `Generate Bill (${formatCurrency(grandTotal, currency)})`}
               </span>
             </button>
           </div>

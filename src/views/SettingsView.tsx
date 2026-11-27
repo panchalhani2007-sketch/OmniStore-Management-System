@@ -6,7 +6,7 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Store, 
-  DollarSign, 
+  IndianRupee, 
   Percent, 
   FileText,
   Sparkles,
@@ -15,6 +15,7 @@ import {
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { testConnection } from '../firebase/config';
+import { resolveCurrencySymbol } from '../utils/currency';
 
 export const SettingsView: React.FC = () => {
   const { settings, updateSettings, seedInitialData } = useStore();
@@ -24,7 +25,7 @@ export const SettingsView: React.FC = () => {
   const [address, setAddress] = useState(settings.address);
   const [phone, setPhone] = useState(settings.phone);
   const [email, setEmail] = useState(settings.email);
-  const [currencySymbol, setCurrencySymbol] = useState(settings.currencySymbol);
+  const [currencySymbol, setCurrencySymbol] = useState(resolveCurrencySymbol(settings.currencySymbol));
   const [taxRate, setTaxRate] = useState(settings.taxRate);
   const [receiptFooter, setReceiptFooter] = useState(settings.receiptFooter);
 
@@ -40,7 +41,7 @@ export const SettingsView: React.FC = () => {
     setAddress(settings.address);
     setPhone(settings.phone);
     setEmail(settings.email);
-    setCurrencySymbol(settings.currencySymbol);
+    setCurrencySymbol(resolveCurrencySymbol(settings.currencySymbol));
     setTaxRate(settings.taxRate);
     setReceiptFooter(settings.receiptFooter);
   }, [settings]);
@@ -62,7 +63,7 @@ export const SettingsView: React.FC = () => {
         address: address.trim(),
         phone: phone.trim(),
         email: email.trim(),
-        currencySymbol: currencySymbol.trim(),
+        currencySymbol: resolveCurrencySymbol(currencySymbol),
         taxRate: Number(taxRate) || 0,
         receiptFooter: receiptFooter.trim()
       });
@@ -188,8 +189,8 @@ export const SettingsView: React.FC = () => {
         {/* Currency & Tax Section */}
         <div className="pt-4 border-t border-slate-800">
           <div className="flex items-center gap-2 mb-3">
-            <DollarSign className="w-4 h-4 text-emerald-400" />
-            <h3 className="font-bold text-white text-sm">Currency &amp; Taxation</h3>
+            <IndianRupee className="w-4 h-4 text-emerald-400" />
+            <h3 className="font-bold text-white text-sm">Currency &amp; Taxation (INR)</h3>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -202,7 +203,7 @@ export const SettingsView: React.FC = () => {
                 onChange={(e) => setCurrencySymbol(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono text-base focus:outline-hidden focus:border-indigo-500 disabled:opacity-60"
               />
-              <span className="text-[10px] text-slate-500 mt-1 block">e.g. $, ₹, €, £, A$, ¥</span>
+              <span className="text-[10px] text-slate-500 mt-1 block">Default: ₹ (INR) — Indian Rupee</span>
             </div>
 
             <div>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  DollarSign, 
+  IndianRupee, 
   TrendingUp, 
   Package, 
   AlertTriangle, 
@@ -21,6 +21,7 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Sale, StoreTab } from '../types/store';
 import { ReceiptModal } from '../components/ReceiptModal';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 interface DashboardViewProps {
   setCurrentTab: (tab: StoreTab) => void;
@@ -33,7 +34,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
   const [selectedSaleForReceipt, setSelectedSaleForReceipt] = useState<Sale | null>(null);
   const [seeding, setSeeding] = useState(false);
 
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
 
   // Metrics calculation
   const totalRevenue = sales.reduce((acc, s) => acc + (s.paymentStatus === 'paid' ? s.grandTotal : 0), 0);
@@ -108,11 +109,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
           <div className="flex justify-between items-start mb-2">
             <span className="text-xs uppercase font-semibold text-slate-400">Total Sales Revenue</span>
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <DollarSign className="w-4 h-4" />
+              <IndianRupee className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-bold text-white font-mono">
-            {currency}{totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatCurrency(totalRevenue, currency)}
           </div>
           <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-400">
             <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
@@ -129,7 +130,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
             </div>
           </div>
           <div className="text-2xl font-bold text-white font-mono">
-            {currency}{todayRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatCurrency(todayRevenue, currency)}
           </div>
           <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-400">
             <span className="font-semibold text-indigo-400">{todaySales.length} orders</span>
@@ -154,7 +155,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
           </div>
           <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-400">
             <Package className="w-3.5 h-3.5 text-blue-400" />
-            <span>Stock Value: {currency}{totalInventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span>Stock Value: {formatCurrency(totalInventoryValue, currency)}</span>
           </div>
         </div>
 
@@ -298,24 +299,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
           <div className="space-y-2.5 text-xs">
             <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
               <span className="text-slate-400">Total Gross Sales</span>
-              <span className="font-mono text-white font-semibold">{currency}{totalRevenue.toFixed(2)}</span>
+              <span className="font-mono text-white font-semibold">{formatCurrency(totalRevenue, currency)}</span>
             </div>
             <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
               <span className="text-slate-400">Est. Cost of Goods Sold (COGS)</span>
-              <span className="font-mono text-slate-300">-{currency}{estimatedCogs.toFixed(2)}</span>
+              <span className="font-mono text-slate-300">-{formatCurrency(Math.abs(estimatedCogs), currency)}</span>
             </div>
             <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
               <span className="text-slate-400 font-medium">Gross Profit</span>
-              <span className="font-mono text-emerald-400 font-semibold">{currency}{grossProfit.toFixed(2)}</span>
+              <span className="font-mono text-emerald-400 font-semibold">{formatCurrency(grossProfit, currency)}</span>
             </div>
             <div className="flex justify-between items-center py-1.5 border-b border-slate-800">
               <span className="text-slate-400">Total Store Operating Expenses</span>
-              <span className="font-mono text-rose-400">-{currency}{totalExpenses.toFixed(2)}</span>
+              <span className="font-mono text-rose-400">-{formatCurrency(Math.abs(totalExpenses), currency)}</span>
             </div>
             <div className="flex justify-between items-center pt-2 text-sm">
               <span className="font-bold text-white">Estimated Net Margin</span>
               <span className={`font-mono font-bold ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {currency}{netProfit.toFixed(2)}
+                {formatCurrency(netProfit, currency)}
               </span>
             </div>
           </div>
@@ -342,7 +343,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
                   <div className="flex justify-between text-xs">
                     <span className="capitalize text-slate-300 font-medium">{method}</span>
                     <span className="font-mono text-white font-semibold">
-                      {currency}{methodTotal.toFixed(2)} <span className="text-slate-500 font-sans text-[10px]">({pct.toFixed(0)}%)</span>
+                      {formatCurrency(methodTotal, currency)} <span className="text-slate-500 font-sans text-[10px]">({pct.toFixed(0)}%)</span>
                     </span>
                   </div>
                   <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
@@ -408,7 +409,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ setCurrentTab }) =
                       {sale.items.reduce((acc, i) => acc + i.quantity, 0)} units ({sale.items.length} items)
                     </td>
                     <td className="py-2.5 px-3 font-mono font-bold text-emerald-400">
-                      {currency}{sale.grandTotal.toFixed(2)}
+                      {formatCurrency(sale.grandTotal, currency)}
                     </td>
                     <td className="py-2.5 px-3 capitalize">
                       <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-[10px]">

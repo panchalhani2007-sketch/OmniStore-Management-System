@@ -1,13 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { 
-  Users, 
   Plus, 
   Search, 
   Phone, 
   Mail, 
-  MapPin, 
-  ShoppingBag, 
-  DollarSign, 
   Edit, 
   Trash2, 
   AlertCircle,
@@ -17,6 +13,7 @@ import {
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Customer, ROLE_PERMISSIONS } from '../types/store';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 export const CustomersView: React.FC = () => {
   const { customers, settings, addCustomer, updateCustomer, deleteCustomer } = useStore();
@@ -38,7 +35,7 @@ export const CustomersView: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
 
   const openCreateModal = () => {
     setEditingCustomer(null);
@@ -149,14 +146,14 @@ export const CustomersView: React.FC = () => {
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
           <span className="text-[11px] uppercase font-semibold text-slate-400">Customer Lifetime Value</span>
           <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">
-            {currency}{totalSpentByAll.toFixed(2)}
+            {formatCurrency(totalSpentByAll, currency)}
           </div>
           <p className="text-[11px] text-slate-400 mt-0.5">Total recorded sales volume</p>
         </div>
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
           <span className="text-[11px] uppercase font-semibold text-slate-400">Average Spend Per Customer</span>
           <div className="text-2xl font-bold text-indigo-400 font-mono mt-1">
-            {currency}{(customers.length > 0 ? totalSpentByAll / customers.length : 0).toFixed(2)}
+            {formatCurrency(customers.length > 0 ? totalSpentByAll / customers.length : 0, currency)}
           </div>
           <p className="text-[11px] text-slate-400 mt-0.5">Across all registered accounts</p>
         </div>
@@ -231,7 +228,7 @@ export const CustomersView: React.FC = () => {
                       </span>
                     </td>
                     <td className="py-3 px-3 font-mono font-bold text-emerald-400">
-                      {currency}{(cust.totalSpent || 0).toFixed(2)}
+                      {formatCurrency(cust.totalSpent || 0, currency)}
                     </td>
                     <td className="py-3 px-3 text-slate-400 max-w-xs truncate">
                       {cust.notes || '—'}

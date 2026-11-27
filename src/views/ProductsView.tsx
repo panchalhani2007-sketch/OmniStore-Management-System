@@ -16,6 +16,7 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Product, ROLE_PERMISSIONS } from '../types/store';
 import { StockAdjustModal } from '../components/StockAdjustModal';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 export const ProductsView: React.FC = () => {
   const { products, categories, settings, addProduct, updateProduct, deleteProduct, addCategory, adjustStock } = useStore();
@@ -55,7 +56,7 @@ export const ProductsView: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
 
   // Gross profit margin calculation
   const marginPercent = sellingPrice > 0 
@@ -319,10 +320,10 @@ export const ProductsView: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3 px-3 font-mono text-slate-400">
-                        {currency}{p.costPrice.toFixed(2)}
+                        {formatCurrency(p.costPrice, currency)}
                       </td>
                       <td className="py-3 px-3 font-mono font-semibold text-white">
-                        {currency}{p.sellingPrice.toFixed(2)}
+                        {formatCurrency(p.sellingPrice, currency)}
                       </td>
                       <td className="py-3 px-3">
                         <span className="inline-flex items-center gap-0.5 font-mono text-[11px] text-emerald-400 font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">

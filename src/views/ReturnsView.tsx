@@ -12,6 +12,7 @@ import {
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { ReturnItem, Sale } from '../types/store';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 interface ReturnsViewProps {
   initialSale?: Sale | null;
@@ -31,7 +32,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialSale }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
 
   const selectedSale = sales.find(s => s.id === selectedSaleId) || initialSale;
 
@@ -207,7 +208,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialSale }) => {
                       </div>
                     </td>
                     <td className="py-3 px-3 font-mono font-bold text-rose-400">
-                      -{currency}{ret.totalRefund.toFixed(2)}
+                      -{formatCurrency(Math.abs(ret.totalRefund), currency)}
                     </td>
                     <td className="py-3 px-3 text-slate-400 max-w-xs truncate">
                       {ret.reason}
@@ -258,7 +259,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialSale }) => {
                   <option value="">-- Choose an Invoice --</option>
                   {sales.map(s => (
                     <option key={s.id} value={s.id}>
-                      {s.saleNumber} - {s.customerName} ({currency}{s.grandTotal.toFixed(2)}) - {new Date(s.createdAt).toLocaleDateString()}
+                      {s.saleNumber} - {s.customerName} ({formatCurrency(s.grandTotal, currency)}) - {new Date(s.createdAt).toLocaleDateString()}
                     </option>
                   ))}
                 </select>
@@ -274,7 +275,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialSale }) => {
                         <div className="flex-1 min-w-0">
                           <p className="font-semibold text-white truncate">{item.productName}</p>
                           <p className="text-[10px] text-slate-400 font-mono">
-                            Refund: {currency}{item.refundUnitPrice.toFixed(2)} each
+                            Refund: {formatCurrency(item.refundUnitPrice, currency)} each
                           </p>
                         </div>
 
@@ -310,7 +311,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialSale }) => {
                   <div className="flex justify-between items-center pt-2 border-t border-slate-700">
                     <span className="font-medium text-slate-300">Total Refund Due:</span>
                     <span className="text-base font-bold text-rose-400 font-mono">
-                      {currency}{totalRefund.toFixed(2)}
+                      {formatCurrency(totalRefund, currency)}
                     </span>
                   </div>
                 </div>

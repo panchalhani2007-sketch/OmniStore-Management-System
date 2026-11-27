@@ -1,6 +1,7 @@
 import React from 'react';
 import { Printer, X, CheckCircle2 } from 'lucide-react';
 import { Sale, StoreSettings } from '../types/store';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 interface ReceiptModalProps {
   sale: Sale | null;
@@ -15,7 +16,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, settings, onCl
     window.print();
   };
 
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
@@ -84,8 +85,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, settings, onCl
                     <div className="text-[9px] text-slate-400 font-mono">{item.sku}</div>
                   </div>
                   <div className="col-span-2 text-center text-slate-600">x{item.quantity}</div>
-                  <div className="col-span-2 text-right text-slate-600">{currency}{item.price.toFixed(2)}</div>
-                  <div className="col-span-2 text-right font-semibold text-slate-900">{currency}{item.total.toFixed(2)}</div>
+                  <div className="col-span-2 text-right text-slate-600">{formatCurrency(item.price, currency)}</div>
+                  <div className="col-span-2 text-right font-semibold text-slate-900">{formatCurrency(item.total, currency)}</div>
                 </div>
               ))}
             </div>
@@ -95,21 +96,21 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ sale, settings, onCl
           <div className="space-y-1.5 text-xs border-b border-dashed border-slate-300 pb-4">
             <div className="flex justify-between text-slate-600 font-sans">
               <span>Subtotal</span>
-              <span className="font-mono">{currency}{sale.subtotal.toFixed(2)}</span>
+              <span className="font-mono">{formatCurrency(sale.subtotal, currency)}</span>
             </div>
             {sale.discountAmount > 0 && (
               <div className="flex justify-between text-emerald-600 font-sans">
                 <span>Discount</span>
-                <span className="font-mono">-{currency}{sale.discountAmount.toFixed(2)}</span>
+                <span className="font-mono">-{formatCurrency(Math.abs(sale.discountAmount), currency)}</span>
               </div>
             )}
             <div className="flex justify-between text-slate-600 font-sans">
               <span>GST / Tax ({sale.taxRate}%)</span>
-              <span className="font-mono">{currency}{sale.taxAmount.toFixed(2)}</span>
+              <span className="font-mono">{formatCurrency(sale.taxAmount, currency)}</span>
             </div>
             <div className="flex justify-between text-base font-bold text-slate-900 pt-1.5 border-t border-slate-200">
               <span className="font-sans">Grand Total</span>
-              <span className="font-mono">{currency}{sale.grandTotal.toFixed(2)}</span>
+              <span className="font-mono">{formatCurrency(sale.grandTotal, currency)}</span>
             </div>
             <div className="flex justify-between text-[11px] text-slate-600 font-sans pt-1">
               <span>Payment ({sale.paymentMethod.toUpperCase()})</span>

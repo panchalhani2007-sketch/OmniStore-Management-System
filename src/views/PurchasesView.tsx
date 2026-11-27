@@ -15,6 +15,7 @@ import {
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { PurchaseItem } from '../types/store';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 export const PurchasesView: React.FC = () => {
   const { purchases, suppliers, products, settings, addPurchase, receivePurchase } = useStore();
@@ -31,7 +32,7 @@ export const PurchasesView: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
 
   const openNewPurchaseModal = () => {
     setError(null);
@@ -236,7 +237,7 @@ export const PurchasesView: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-3 px-3 font-mono font-bold text-white">
-                      {currency}{po.totalAmount.toFixed(2)}
+                      {formatCurrency(po.totalAmount, currency)}
                     </td>
                     <td className="py-3 px-3">
                       {po.receivedStatus === 'received' ? (
@@ -380,7 +381,7 @@ export const PurchasesView: React.FC = () => {
                 <div className="flex justify-between items-center p-3 rounded-xl bg-slate-800/80 border border-slate-700">
                   <span className="font-semibold text-slate-300">Order Grand Total:</span>
                   <span className="font-mono font-bold text-white text-base">
-                    {currency}{totalAmount.toFixed(2)}
+                    {formatCurrency(totalAmount, currency)}
                   </span>
                 </div>
               </div>

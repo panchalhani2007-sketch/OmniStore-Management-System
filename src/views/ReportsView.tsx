@@ -10,7 +10,7 @@ import {
   Printer,
   Search,
   Eye,
-  DollarSign,
+  IndianRupee,
   AlertTriangle,
   ShieldAlert,
   CheckCircle2
@@ -18,12 +18,13 @@ import {
 import { useStore } from '../context/StoreContext';
 import { Sale } from '../types/store';
 import { ReceiptModal } from '../components/ReceiptModal';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 type ReportTab = 'daily' | 'monthly' | 'billing' | 'products' | 'stock';
 
 export const ReportsView: React.FC = () => {
   const { sales, products, expenses, categories, settings } = useStore();
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
 
   const [activeTab, setActiveTab] = useState<ReportTab>('daily');
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
@@ -350,7 +351,7 @@ export const ReportsView: React.FC = () => {
               onClick={() =>
                 downloadCSV(
                   `daily-sales-${selectedDate}.csv`,
-                  ['Invoice #', 'Time', 'Customer', 'Items', 'Subtotal', 'Discount', 'Tax', 'Total', 'Payment', 'Cashier'],
+                  ['Invoice #', 'Time', 'Customer', 'Items', 'Subtotal (INR)', 'Discount (INR)', 'Tax (INR)', 'Total (INR)', 'Payment', 'Cashier'],
                   dailySalesForDate.map((s) => [
                     s.saleNumber,
                     new Date(s.createdAt).toLocaleTimeString(),
@@ -377,28 +378,28 @@ export const ReportsView: React.FC = () => {
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
               <span className="text-[11px] uppercase font-semibold text-slate-400">Daily Gross Revenue</span>
               <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">
-                {currency}{dailySummary.gross.toFixed(2)}
+                {formatCurrency(dailySummary.gross, currency)}
               </div>
               <span className="text-[11px] text-slate-500">{dailySummary.orders} invoices • {dailySummary.units} units</span>
             </div>
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
               <span className="text-[11px] uppercase font-semibold text-slate-400">Tax / GST Collected</span>
               <div className="text-2xl font-bold text-indigo-400 font-mono mt-1">
-                {currency}{dailySummary.tax.toFixed(2)}
+                {formatCurrency(dailySummary.tax, currency)}
               </div>
-              <span className="text-[11px] text-slate-500">Discounts: {currency}{dailySummary.discount.toFixed(2)}</span>
+              <span className="text-[11px] text-slate-500">Discounts: {formatCurrency(dailySummary.discount, currency)}</span>
             </div>
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
               <span className="text-[11px] uppercase font-semibold text-slate-400">Est. Cost of Goods</span>
               <div className="text-2xl font-bold text-slate-200 font-mono mt-1">
-                {currency}{dailySummary.cogs.toFixed(2)}
+                {formatCurrency(dailySummary.cogs, currency)}
               </div>
               <span className="text-[11px] text-slate-500">Based on purchase cost</span>
             </div>
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
               <span className="text-[11px] uppercase font-semibold text-slate-400">Est. Gross Profit</span>
               <div className={`text-2xl font-bold font-mono mt-1 ${dailySummary.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {currency}{dailySummary.profit.toFixed(2)}
+                {formatCurrency(dailySummary.profit, currency)}
               </div>
               <span className="text-[11px] text-slate-500">Excl. tax &amp; COGS</span>
             </div>
@@ -423,7 +424,7 @@ export const ReportsView: React.FC = () => {
                     type="button"
                     onClick={() => setSelectedDate(day.key)}
                     className="flex flex-col items-center gap-1.5 h-full justify-end group cursor-pointer"
-                    title={`${day.label}: ${currency}${day.total.toFixed(2)} (${day.orders} orders)`}
+                    title={`${day.label}: ${formatCurrency(day.total, currency)} (${day.orders} orders)`}
                   >
                     <div className="w-full flex-1 flex items-end justify-center">
                       <div
@@ -477,8 +478,8 @@ export const ReportsView: React.FC = () => {
                         </td>
                         <td className="py-2.5 px-3 text-white font-medium">{s.customerName || 'Walk-in'}</td>
                         <td className="py-2.5 px-3">{s.items.reduce((a, i) => a + i.quantity, 0)} units</td>
-                        <td className="py-2.5 px-3 font-mono text-slate-400">{currency}{s.taxAmount.toFixed(2)}</td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-emerald-400">{currency}{s.grandTotal.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-400">{formatCurrency(s.taxAmount, currency)}</td>
+                        <td className="py-2.5 px-3 font-mono font-bold text-emerald-400">{formatCurrency(s.grandTotal, currency)}</td>
                         <td className="py-2.5 px-3 uppercase text-[10px] font-semibold">{s.paymentMethod}</td>
                         <td className="py-2.5 px-3 text-right">
                           <button
@@ -520,7 +521,7 @@ export const ReportsView: React.FC = () => {
               onClick={() =>
                 downloadCSV(
                   `monthly-sales-${selectedYear}.csv`,
-                  ['Month', 'Orders', 'Gross Revenue', 'Tax', 'COGS', 'Expenses', 'Est Net Profit', 'Avg Order Value'],
+                  ['Month', 'Orders', 'Gross Revenue (INR)', 'Tax (INR)', 'COGS (INR)', 'Expenses (INR)', 'Est Net Profit (INR)', 'Avg Order Value (INR)'],
                   monthlyBreakdown.map((m) => [
                     m.monthName,
                     m.orders,
@@ -545,28 +546,28 @@ export const ReportsView: React.FC = () => {
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
               <span className="text-[11px] uppercase font-semibold text-slate-400">{selectedYear} Revenue</span>
               <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">
-                {currency}{yearlyTotals.revenue.toFixed(2)}
+                {formatCurrency(yearlyTotals.revenue, currency)}
               </div>
               <span className="text-[11px] text-slate-500">{yearlyTotals.orders} total orders</span>
             </div>
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
               <span className="text-[11px] uppercase font-semibold text-slate-400">{selectedYear} Tax / GST</span>
               <div className="text-2xl font-bold text-indigo-400 font-mono mt-1">
-                {currency}{yearlyTotals.tax.toFixed(2)}
+                {formatCurrency(yearlyTotals.tax, currency)}
               </div>
               <span className="text-[11px] text-slate-500">Collected across invoices</span>
             </div>
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
               <span className="text-[11px] uppercase font-semibold text-slate-400">{selectedYear} Expenses</span>
               <div className="text-2xl font-bold text-rose-400 font-mono mt-1">
-                {currency}{yearlyTotals.expenseTotal.toFixed(2)}
+                {formatCurrency(yearlyTotals.expenseTotal, currency)}
               </div>
               <span className="text-[11px] text-slate-500">Store overhead logged</span>
             </div>
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
               <span className="text-[11px] uppercase font-semibold text-slate-400">{selectedYear} Net Profit</span>
               <div className={`text-2xl font-bold font-mono mt-1 ${yearlyTotals.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {currency}{yearlyTotals.netProfit.toFixed(2)}
+                {formatCurrency(yearlyTotals.netProfit, currency)}
               </div>
               <span className="text-[11px] text-slate-500">Revenue - Tax - COGS - Expenses</span>
             </div>
@@ -582,7 +583,7 @@ export const ReportsView: React.FC = () => {
                   <div
                     key={m.monthIndex}
                     className="flex flex-col items-center gap-1.5 h-full justify-end"
-                    title={`${m.monthName}: ${currency}${m.revenue.toFixed(2)} (${m.orders} orders)`}
+                    title={`${m.monthName}: ${formatCurrency(m.revenue, currency)} (${m.orders} orders)`}
                   >
                     <div className="w-full flex-1 flex items-end justify-center">
                       <div
@@ -619,13 +620,13 @@ export const ReportsView: React.FC = () => {
                   <tr key={m.monthIndex} className="hover:bg-slate-800/40">
                     <td className="py-2.5 px-3 font-semibold text-white">{m.monthName}</td>
                     <td className="py-2.5 px-3 font-mono">{m.orders}</td>
-                    <td className="py-2.5 px-3 font-mono text-emerald-400 font-semibold">{currency}{m.revenue.toFixed(2)}</td>
-                    <td className="py-2.5 px-3 font-mono text-slate-400">{currency}{m.tax.toFixed(2)}</td>
-                    <td className="py-2.5 px-3 font-mono text-slate-400">{currency}{m.cogs.toFixed(2)}</td>
-                    <td className="py-2.5 px-3 font-mono text-rose-400">{currency}{m.expenseTotal.toFixed(2)}</td>
-                    <td className="py-2.5 px-3 font-mono text-slate-300">{currency}{m.avgOrder.toFixed(2)}</td>
+                    <td className="py-2.5 px-3 font-mono text-emerald-400 font-semibold">{formatCurrency(m.revenue, currency)}</td>
+                    <td className="py-2.5 px-3 font-mono text-slate-400">{formatCurrency(m.tax, currency)}</td>
+                    <td className="py-2.5 px-3 font-mono text-slate-400">{formatCurrency(m.cogs, currency)}</td>
+                    <td className="py-2.5 px-3 font-mono text-rose-400">{formatCurrency(m.expenseTotal, currency)}</td>
+                    <td className="py-2.5 px-3 font-mono text-slate-300">{formatCurrency(m.avgOrder, currency)}</td>
                     <td className={`py-2.5 px-3 text-right font-mono font-bold ${m.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {currency}{m.netProfit.toFixed(2)}
+                      {formatCurrency(m.netProfit, currency)}
                     </td>
                   </tr>
                 ))}
@@ -681,7 +682,7 @@ export const ReportsView: React.FC = () => {
               onClick={() =>
                 downloadCSV(
                   `billing-history.csv`,
-                  ['Invoice #', 'Date', 'Customer', 'Subtotal', 'Discount', 'Tax', 'Grand Total', 'Method', 'Cashier'],
+                  ['Invoice #', 'Date', 'Customer', 'Subtotal (INR)', 'Discount (INR)', 'Tax (INR)', 'Grand Total (INR)', 'Method', 'Cashier'],
                   filteredBillingHistory.map((s) => [
                     s.saleNumber,
                     new Date(s.createdAt).toLocaleString(),
@@ -731,10 +732,10 @@ export const ReportsView: React.FC = () => {
                         {new Date(s.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
                       </td>
                       <td className="py-2.5 px-3 text-white font-medium">{s.customerName || 'Walk-in'}</td>
-                      <td className="py-2.5 px-3 font-mono">{currency}{s.subtotal.toFixed(2)}</td>
-                      <td className="py-2.5 px-3 font-mono text-amber-400">-{currency}{s.discountAmount.toFixed(2)}</td>
-                      <td className="py-2.5 px-3 font-mono text-slate-400">{currency}{s.taxAmount.toFixed(2)}</td>
-                      <td className="py-2.5 px-3 font-mono font-bold text-emerald-400">{currency}{s.grandTotal.toFixed(2)}</td>
+                      <td className="py-2.5 px-3 font-mono">{formatCurrency(s.subtotal, currency)}</td>
+                      <td className="py-2.5 px-3 font-mono text-amber-400">-{formatCurrency(Math.abs(s.discountAmount), currency)}</td>
+                      <td className="py-2.5 px-3 font-mono text-slate-400">{formatCurrency(s.taxAmount, currency)}</td>
+                      <td className="py-2.5 px-3 font-mono font-bold text-emerald-400">{formatCurrency(s.grandTotal, currency)}</td>
                       <td className="py-2.5 px-3 uppercase text-[10px] font-semibold">{s.paymentMethod}</td>
                       <td className="py-2.5 px-3 text-slate-400">{s.cashierName}</td>
                       <td className="py-2.5 px-3 text-right">
@@ -785,7 +786,7 @@ export const ReportsView: React.FC = () => {
               onClick={() =>
                 downloadCSV(
                   `product-sales-report.csv`,
-                  ['Product Name', 'SKU', 'Units Sold', 'Total Revenue', 'Total Cost', 'Gross Profit', 'Margin %'],
+                  ['Product Name', 'SKU', 'Units Sold', 'Total Revenue (INR)', 'Total Cost (INR)', 'Gross Profit (INR)', 'Margin %'],
                   productSalesStats.map((p) => {
                     const margin = p.revenue > 0 ? ((p.profit / p.revenue) * 100).toFixed(1) : '0.0';
                     return [p.productName, p.sku, p.unitsSold, p.revenue.toFixed(2), p.cost.toFixed(2), p.profit.toFixed(2), `${margin}%`];
@@ -827,10 +828,10 @@ export const ReportsView: React.FC = () => {
                         <td className="py-2.5 px-3 font-semibold text-white">{p.productName}</td>
                         <td className="py-2.5 px-3 font-mono text-indigo-300">{p.sku}</td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold text-white">{p.unitsSold}</td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">{currency}{p.revenue.toFixed(2)}</td>
-                        <td className="py-2.5 px-3 text-right font-mono text-slate-400">{currency}{p.cost.toFixed(2)}</td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">{formatCurrency(p.revenue, currency)}</td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-400">{formatCurrency(p.cost, currency)}</td>
                         <td className={`py-2.5 px-3 text-right font-mono font-semibold ${p.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {currency}{p.profit.toFixed(2)}
+                          {formatCurrency(p.profit, currency)}
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono">
                           <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">
@@ -864,17 +865,17 @@ export const ReportsView: React.FC = () => {
               <div>
                 <span className="text-[11px] uppercase font-semibold text-slate-400">Stock Valuation (Cost)</span>
                 <div className="text-2xl font-bold text-amber-400 font-mono mt-1">
-                  {currency}{stockValuation.costValue.toFixed(2)}
+                  {formatCurrency(stockValuation.costValue, currency)}
                 </div>
                 <span className="text-[11px] text-slate-500">Purchase asset value</span>
               </div>
-              <DollarSign className="w-6 h-6 text-amber-400" />
+              <IndianRupee className="w-6 h-6 text-amber-400" />
             </div>
             <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
               <div>
                 <span className="text-[11px] uppercase font-semibold text-slate-400">Potential Retail Value</span>
                 <div className="text-2xl font-bold text-emerald-400 font-mono mt-1">
-                  {currency}{stockValuation.retailValue.toFixed(2)}
+                  {formatCurrency(stockValuation.retailValue, currency)}
                 </div>
                 <span className="text-[11px] text-slate-500">Projected selling value</span>
               </div>
@@ -914,7 +915,7 @@ export const ReportsView: React.FC = () => {
               onClick={() =>
                 downloadCSV(
                   `stock-report-${stockFilter}.csv`,
-                  ['Product Name', 'SKU', 'Category', 'Stock Qty', 'Min Alert', 'Status', 'Unit Cost', 'Selling Price', 'Total Cost Value'],
+                  ['Product Name', 'SKU', 'Category', 'Stock Qty', 'Min Alert', 'Status', 'Unit Cost (INR)', 'Selling Price (INR)', 'Total Cost Value (INR)'],
                   stockReportItems.map((p) => {
                     const st = p.stock === 0 ? 'Out of Stock' : p.stock <= p.minStockAlert ? 'Low Stock' : 'Healthy';
                     return [
@@ -981,10 +982,10 @@ export const ReportsView: React.FC = () => {
                         )}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono text-slate-300">
-                        {currency}{(p.stock * p.costPrice).toFixed(2)}
+                        {formatCurrency(p.stock * p.costPrice, currency)}
                       </td>
                       <td className="py-2.5 px-3 text-right font-mono text-emerald-400 font-semibold">
-                        {currency}{(p.stock * p.sellingPrice).toFixed(2)}
+                        {formatCurrency(p.stock * p.sellingPrice, currency)}
                       </td>
                     </tr>
                   );

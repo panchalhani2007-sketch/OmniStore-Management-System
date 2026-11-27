@@ -1,19 +1,16 @@
 import React, { useState } from 'react';
 import { 
-  Wallet, 
   Plus, 
   Search, 
   Trash2, 
   AlertCircle, 
-  Calendar, 
-  CreditCard, 
-  DollarSign,
   X,
   Check
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Expense, ROLE_PERMISSIONS } from '../types/store';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 export const ExpensesView: React.FC = () => {
   const { expenses, settings, addExpense, deleteExpense } = useStore();
@@ -37,7 +34,7 @@ export const ExpensesView: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
 
   const categoriesList: Expense['category'][] = [
     'Rent',
@@ -135,7 +132,7 @@ export const ExpensesView: React.FC = () => {
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
           <span className="text-[11px] uppercase font-semibold text-slate-400">Total Recorded Expenses</span>
           <div className="text-2xl font-bold text-rose-400 font-mono mt-1">
-            {currency}{totalExpenseAmount.toFixed(2)}
+            {formatCurrency(totalExpenseAmount, currency)}
           </div>
           <p className="text-[11px] text-slate-400 mt-0.5">{expenses.length} invoices logged</p>
         </div>
@@ -148,7 +145,7 @@ export const ExpensesView: React.FC = () => {
               return (
                 <div key={cat} className="p-2 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs">
                   <span className="text-slate-400 block truncate">{cat}</span>
-                  <span className="font-mono font-bold text-white">{currency}{catTotal.toFixed(0)}</span>
+                  <span className="font-mono font-bold text-white">{formatCurrency(catTotal, currency, 0)}</span>
                 </div>
               );
             })}
@@ -229,7 +226,7 @@ export const ExpensesView: React.FC = () => {
                       {exp.reference || '—'}
                     </td>
                     <td className="py-3 px-3 font-mono font-bold text-rose-400 text-sm">
-                      -{currency}{exp.amount.toFixed(2)}
+                      -{formatCurrency(Math.abs(exp.amount), currency)}
                     </td>
                     <td className="py-3 px-3 text-slate-400">
                       {exp.createdBy}

@@ -15,6 +15,7 @@ import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
 import { Product, ROLE_PERMISSIONS } from '../types/store';
 import { StockAdjustModal } from '../components/StockAdjustModal';
+import { formatCurrency, resolveCurrencySymbol } from '../utils/currency';
 
 export const InventoryView: React.FC = () => {
   const { products, categories, stockLogs, settings } = useStore();
@@ -26,7 +27,7 @@ export const InventoryView: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedProductForAdjust, setSelectedProductForAdjust] = useState<Product | null>(null);
 
-  const currency = settings.currencySymbol || '$';
+  const currency = resolveCurrencySymbol(settings.currencySymbol);
 
   // Metrics
   const outOfStockProducts = useMemo(() => products.filter(p => p.stock === 0), [products]);
@@ -336,10 +337,10 @@ export const InventoryView: React.FC = () => {
                           {p.categoryName || 'Uncategorized'}
                         </td>
                         <td className="py-3 px-3 font-mono text-slate-400">
-                          {currency}{p.costPrice.toFixed(2)}
+                          {formatCurrency(p.costPrice, currency)}
                         </td>
                         <td className="py-3 px-3 font-mono font-semibold text-white">
-                          {currency}{p.sellingPrice.toFixed(2)}
+                          {formatCurrency(p.sellingPrice, currency)}
                         </td>
                         <td className="py-3 px-3">
                           <span className={`font-mono text-sm font-bold ${
