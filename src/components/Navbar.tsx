@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   Store, 
   LogOut, 
+  LogIn,
   UserCheck, 
   ShieldCheck, 
   ShoppingCart, 
@@ -10,11 +11,13 @@ import {
   Bell,
   AlertTriangle,
   CheckCircle2,
-  X
+  X,
+  Download
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import { ROLE_PERMISSIONS, UserRole, StoreTab } from '../types/store';
+import { downloadLiveDatabaseJson } from '../utils/exportDatabase';
 
 interface NavbarProps {
   currentTab: StoreTab;
@@ -29,8 +32,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   mobileMenuOpen,
   setMobileMenuOpen,
 }) => {
-  const { user, profile, role, isAuthorizedAdmin, simulatedRole, setSimulatedRole, signOut, releaseAdminOwnership } = useAuth();
-  const { products, categories, settings, syncTimestamp } = useStore();
+  const { user, profile, role, isAuthorizedAdmin, simulatedRole, setSimulatedRole, signOut, releaseAdminOwnership, openLoginPage } = useAuth();
+  const {
+    products,
+    categories,
+    stockLogs,
+    employees,
+    sales,
+    returns,
+    customers,
+    settings,
+    syncTimestamp
+  } = useStore();
 
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [alertDropdownOpen, setAlertDropdownOpen] = useState(false);
@@ -336,6 +349,45 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="font-semibold text-slate-200">{roleInfo.name}</span>
               </div>
             </div>
+          )}
+
+          {/* Export Live Database JSON (Admin only) */}
+          {isAuthorizedAdmin && role === 'admin' && (
+            <button
+              type="button"
+              onClick={() =>
+                downloadLiveDatabaseJson({
+                  products,
+                  categories,
+                  stockLogs,
+                  employees,
+                  sales,
+                  returns,
+                  customers,
+                  settings
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-emerald-600/20 text-slate-200 hover:text-emerald-300 border border-slate-700/80 hover:border-emerald-500/40 text-xs font-semibold transition whitespace-nowrap"
+              title="Download OmniStore_Database.json from live Firestore"
+              aria-label="Export Database JSON"
+            >
+              <Download className="w-4 h-4 text-emerald-400" />
+              <span className="hidden xl:inline">Export DB JSON</span>
+            </button>
+          )}
+
+          {/* Go to Login Page (Admin only - keeps Firebase session & Admin role active) */}
+          {isAuthorizedAdmin && (
+            <button
+              type="button"
+              onClick={() => openLoginPage()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-600/20 text-slate-200 hover:text-indigo-300 border border-slate-700/80 hover:border-indigo-500/40 text-xs font-semibold transition whitespace-nowrap"
+              title="Open Login Page without logging out"
+              aria-label="Go to Login Page"
+            >
+              <LogIn className="w-4 h-4 text-indigo-400" />
+              <span>Go to Login Page</span>
+            </button>
           )}
 
           {/* User Profile & Sign Out */}

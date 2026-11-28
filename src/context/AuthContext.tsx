@@ -46,13 +46,15 @@ interface AuthContextType {
   registerNewAdmin: (email: string, pass: string, name: string) => Promise<void>;
   releaseAdminOwnership: () => Promise<void>;
   signInWithEmail: (email: string, pass: string, expectedRole: UserRole) => Promise<void>;
-  signUpWithEmail: (email: string, pass: string, name: string, requestedRole?: UserRole) => Promise<void>;
   createStaffAccount: (email: string, pass: string, name: string, role: UserRole, phone?: string) => Promise<void>;
   sendResetEmail: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateUserRole: (userId: string, newRole: UserRole) => Promise<void>;
   updateStaffMember: (userId: string, updates: Partial<Pick<UserProfile, 'name' | 'role' | 'status' | 'phone'>>) => Promise<void>;
   deleteStaffProfile: (userId: string) => Promise<void>;
+  viewingLoginPage: boolean;
+  openLoginPage: () => void;
+  returnToDashboard: () => void;
   syncManagerSlots: () => Promise<void>;
   cleanupPreResetAdminManagers: (targetIds: string[]) => Promise<void>;
 }
@@ -70,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [simulatedRole, setSimulatedRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isUnauthorizedAccount, setIsUnauthorizedAccount] = useState<boolean>(false);
+  const [viewingLoginPage, setViewingLoginPage] = useState<boolean>(false);
 
   const signingUpRef = React.useRef<boolean>(false);
   const verifyingLoginRef = React.useRef<boolean>(false);
@@ -224,6 +227,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLockAdmin(false);
         setSimulatedRole(null);
         setIsUnauthorizedAccount(false);
+        setViewingLoginPage(false);
       }
       setLoading(false);
     });
@@ -405,6 +409,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAdminOwnershipReleased(false);
         setAdminClaimedAt(now);
         setIsUnauthorizedAccount(false);
+        setViewingLoginPage(false);
         attachProfileListener(cred.user.uid, true);
         setLoading(false);
       } catch (err) {
@@ -578,6 +583,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAdminOwnershipReleased(false);
         setAdminClaimedAt(now);
         setIsUnauthorizedAccount(false);
+        setViewingLoginPage(false);
         attachProfileListener(cred.user.uid, true);
         setLoading(false);
       } catch (err) {
@@ -632,55 +638,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setProfile(resolved.profile);
       setIsLockAdmin(resolved.isLockAdmin);
       setIsUnauthorizedAccount(false);
+      setViewingLoginPage(false);
       attachProfileListener(cred.user.uid, resolved.isLockAdmin);
       setLoading(false);
     } finally {
-      verifyingLoginRef.current = false;
-    }
-  };
-
-  const signUpWithEmail = async (email: string, pass: string, name: string, requestedRole: UserRole = 'billing') => {
-    if (requestedRole === 'admin') {
-      const statusSnap = await getDoc(doc(db, 'system_config', 'admin_status'));
-      if (!statusSnap.exists()) {
-        await registerFirstAdmin(email, pass, name);
-        return;
-      }
-      throw new Error('An authorized Admin account already exists. Nobody else can register an Admin account.');
-    }
-
-    if (requestedRole === 'manager') {
-      throw new Error('Manager role (maximum 2 accounts) can only be assigned by the authorized Admin in Staff & Roles.');
-    }
-
-    verifyingLoginRef.current = true;
-    signingUpRef.current = true;
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      const now = new Date().toISOString();
-      const newProfile: UserProfile = {
-        id: cred.user.uid,
-        email: cred.user.email || email,
-        name: name.trim() || email.split('@')[0],
-        role: 'billing',
-        status: 'active',
-        createdAt: now,
-        updatedAt: now
-      };
-      try {
-        await setDoc(doc(db, 'users', cred.user.uid), newProfile);
-        setUser(cred.user);
-        setProfile(newProfile);
-        setIsLockAdmin(false);
-        setIsUnauthorizedAccount(false);
-        attachProfileListener(cred.user.uid, false);
-        setLoading(false);
-      } catch (err) {
-        await cred.user.delete().catch(() => fbSignOut(auth));
-        handleFirestoreError(err, OperationType.WRITE, `users/${cred.user.uid}`);
-      }
-    } finally {
-      signingUpRef.current = false;
       verifyingLoginRef.current = false;
     }
   };
@@ -758,6 +719,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLockAdmin(false);
     setSimulatedRole(null);
     setIsUnauthorizedAccount(false);
+    setViewingLoginPage(false);
+  };
+
+  // Navigate to the Login Page while keeping Firebase Auth session and Primary Admin role active
+  const openLoginPage = () => {
+    if (!isLockAdmin) return;
+    setViewingLoginPage(true);
+    if (window.location.pathname !== '/login') {
+      window.history.pushState(null, '', '/login');
+    }
+  };
+
+  const returnToDashboard = () => {
+    setViewingLoginPage(false);
   };
 
   const updateUserRole = async (userId: string, newRole: UserRole) => {
@@ -935,10 +910,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         registerNewAdmin,
         releaseAdminOwnership,
         signInWithEmail,
-        signUpWithEmail,
         createStaffAccount,
         sendResetEmail,
         signOut,
+        viewingLoginPage,
+        openLoginPage,
+        returnToDashboard,
         updateUserRole,
         updateStaffMember,
         deleteStaffProfile,

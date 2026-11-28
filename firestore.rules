@@ -259,10 +259,6 @@ service cloud.firestore {
           getAfter(/databases/$(database)/documents/system_config/admin_lock).data.ownershipReleased == false &&
           request.resource.data.role == 'admin' &&
           request.resource.data.status == 'active') ||
-        // Self-registration via Register Staff: strictly Billing Staff ONLY (never Admin or Manager)
-        (isOwner(userId) && !isAuthorizedAdmin() &&
-          request.resource.data.role == 'billing' &&
-          request.resource.data.status == 'active') ||
         // Authorized Admin creating Manager (atomically claims slot_1 or slot_2) or Billing Staff
         (isAuthorizedAdmin() && !isOwner(userId) &&
           request.resource.data.status in ['active', 'inactive'] &&

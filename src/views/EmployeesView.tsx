@@ -11,6 +11,7 @@ import {
   Trash2,
   Power,
   LogOut,
+  LogIn,
   KeyRound
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
@@ -36,7 +37,8 @@ export const EmployeesView: React.FC = () => {
     deleteStaffProfile,
     syncManagerSlots,
     cleanupPreResetAdminManagers,
-    releaseAdminOwnership
+    releaseAdminOwnership,
+    openLoginPage
   } = useAuth();
 
   // Add Staff modal states
@@ -359,6 +361,14 @@ export const EmployeesView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => openLoginPage()}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-indigo-600/20 text-slate-200 hover:text-indigo-300 border border-slate-700 hover:border-indigo-500/40 text-xs font-semibold transition"
+          >
+            <LogIn className="w-4 h-4 text-indigo-400" />
+            <span>Go to Login Page</span>
+          </button>
           <button
             type="button"
             disabled={isReleasingOwnership}

@@ -44,7 +44,17 @@ function extractTabFromLocation(): { requestedRoute: string | null; tab: StoreTa
 }
 
 function MainApp() {
-  const { user, role, isAuthorizedAdmin, loading, isAccountDisabled, isUnauthorizedAccount, signOut } = useAuth();
+  const {
+    user,
+    role,
+    isAuthorizedAdmin,
+    loading,
+    isAccountDisabled,
+    isUnauthorizedAccount,
+    viewingLoginPage,
+    returnToDashboard,
+    signOut
+  } = useAuth();
   
   const [currentTab, setCurrentTab] = useState<StoreTab>('inventory');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -90,6 +100,21 @@ function MainApp() {
       const { requestedRoute, tab } = extractTabFromLocation();
       const fallback = roleInfo.allowedTabs[0] || 'inventory';
 
+      if (viewingLoginPage && isAuthorizedAdmin) {
+        if (requestedRoute === 'login') {
+          return;
+        }
+        returnToDashboard();
+      }
+
+      if (requestedRoute === 'login') {
+        const target = isTabAllowed(currentTab) ? currentTab : fallback;
+        setBlockedUrlNotice(null);
+        setCurrentTab(target);
+        window.history.replaceState(null, '', `/${target}`);
+        return;
+      }
+
       if (requestedRoute) {
         if (tab && isTabAllowed(tab)) {
           setCurrentTab(tab);
@@ -118,7 +143,7 @@ function MainApp() {
       window.removeEventListener('popstate', syncFromLocation);
       window.removeEventListener('hashchange', syncFromLocation);
     };
-  }, [loading, user, roleInfo, isTabAllowed, currentTab]);
+  }, [loading, user, isUnauthorizedAccount, isAccountDisabled, roleInfo, isTabAllowed, currentTab, viewingLoginPage, isAuthorizedAdmin]);
 
   // Reset active route on sign-out so a newly registered Admin lands cleanly on the Admin Dashboard
   useEffect(() => {
@@ -195,6 +220,10 @@ function MainApp() {
         </div>
       </div>
     );
+  }
+
+  if (viewingLoginPage && isAuthorizedAdmin) {
+    return <AuthModal />;
   }
 
   return (

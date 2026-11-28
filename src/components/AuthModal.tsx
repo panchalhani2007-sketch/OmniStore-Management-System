@@ -8,6 +8,7 @@ import {
   Briefcase,
   ShoppingCart,
   ArrowRight,
+  ArrowLeft,
   AlertCircle,
   CheckCircle2,
   KeyRound,
@@ -44,17 +45,21 @@ const LOGIN_ROLES: Array<{
 
 export const AuthModal: React.FC = () => {
   const {
+    user,
+    profile,
+    isAuthorizedAdmin,
+    viewingLoginPage,
+    returnToDashboard,
     adminInitialized,
     adminOwnershipReleased,
     adminInitLoading,
     registerFirstAdmin,
     registerNewAdmin,
     signInWithEmail,
-    signUpWithEmail,
     sendResetEmail
   } = useAuth();
 
-  const [mode, setMode] = useState<'setup_admin' | 'register_new_admin' | 'signin' | 'signup' | 'forgot'>('signin');
+  const [mode, setMode] = useState<'setup_admin' | 'register_new_admin' | 'signin' | 'forgot'>('signin');
   const [selectedRole, setSelectedRole] = useState<UserRole>('admin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -106,8 +111,6 @@ export const AuthModal: React.FC = () => {
         await registerNewAdmin(email, password, name);
       } else if (mode === 'signin') {
         await signInWithEmail(email, password, selectedRole);
-      } else if (mode === 'signup') {
-        await signUpWithEmail(email, password, name, 'billing');
       } else if (mode === 'forgot') {
         await sendResetEmail(email);
         setSuccessMsg('Password reset email sent! Check your inbox.');
@@ -159,6 +162,29 @@ export const AuthModal: React.FC = () => {
           </p>
         </div>
 
+        {/* Active Admin Session Return Banner (when Admin navigated here without logging out) */}
+        {user && isAuthorizedAdmin && viewingLoginPage && (
+          <div className="mb-4 p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-100 text-xs space-y-2.5">
+            <div className="flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-white">Active Admin Session</p>
+                <p className="text-[11px] text-emerald-200/85 mt-0.5">
+                  Signed in as <span className="font-semibold text-white">{profile?.name || user.email}</span>. Your Firebase session and Primary Admin role remain active.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => returnToDashboard()}
+              className="w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Return to Admin Dashboard</span>
+            </button>
+          </div>
+        )}
+
         {/* New Admin Registration Banner when previous Admin explicitly released ownership */}
         {!adminInitLoading && adminOwnershipReleased && (
           <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2.5">
@@ -197,7 +223,7 @@ export const AuthModal: React.FC = () => {
             </button>
           </div>
         ) : !adminInitLoading && adminOwnershipReleased ? (
-          <div className="grid grid-cols-3 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-[11px] font-semibold">
+          <div className="grid grid-cols-2 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-xs font-semibold">
             <button
               type="button"
               onClick={() => { setMode('register_new_admin'); resetMessages(); }}
@@ -212,16 +238,9 @@ export const AuthModal: React.FC = () => {
             >
               Sign In
             </button>
-            <button
-              type="button"
-              onClick={() => { setMode('signup'); resetMessages(); }}
-              className={`py-1.5 px-1 rounded-lg transition ${mode === 'signup' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-            >
-              Register Staff
-            </button>
           </div>
         ) : !adminInitLoading && !adminInitialized ? (
-          <div className="grid grid-cols-3 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-xs font-semibold">
+          <div className="grid grid-cols-2 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-xs font-semibold">
             <button
               type="button"
               onClick={() => { setMode('setup_admin'); resetMessages(); }}
@@ -236,32 +255,8 @@ export const AuthModal: React.FC = () => {
             >
               Sign In
             </button>
-            <button
-              type="button"
-              onClick={() => { setMode('signup'); resetMessages(); }}
-              className={`py-1.5 rounded-lg transition ${mode === 'signup' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-            >
-              Register Staff
-            </button>
           </div>
-        ) : (
-          <div className="grid grid-cols-2 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => { setMode('signin'); resetMessages(); }}
-              className={`py-1.5 rounded-lg transition ${mode === 'signin' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => { setMode('signup'); resetMessages(); }}
-              className={`py-1.5 rounded-lg transition ${mode === 'signup' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-            >
-              Register Staff
-            </button>
-          </div>
-        )}
+        ) : null}
 
         {/* Error / Success Notifications */}
         {error && (
@@ -310,10 +305,10 @@ export const AuthModal: React.FC = () => {
             </div>
           )}
 
-          {(mode === 'signup' || isAdminRegistrationMode) && (
+          {isAdminRegistrationMode && (
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                {isAdminRegistrationMode ? 'Primary Admin Full Name' : 'Full Name'}
+                Primary Admin Full Name
               </label>
               <div className="relative">
                 <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -393,18 +388,6 @@ export const AuthModal: React.FC = () => {
             </div>
           )}
 
-          {mode === 'signup' && (
-            <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/70 space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                <ShoppingCart className="w-3.5 h-3.5" />
-                <span>Assigned Store Role: Billing Staff</span>
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Self-registration creates Billing Staff accounts only. Primary Admin and Manager privileges cannot be self-assigned.
-              </p>
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={loading || adminInitLoading}
@@ -426,11 +409,6 @@ export const AuthModal: React.FC = () => {
               <>
                 <span>Sign In to Dashboard</span>
                 <ArrowRight className="w-4 h-4" />
-              </>
-            ) : mode === 'signup' ? (
-              <>
-                <span>Create Staff Account</span>
-                <CheckCircle2 className="w-4 h-4" />
               </>
             ) : (
               <>
