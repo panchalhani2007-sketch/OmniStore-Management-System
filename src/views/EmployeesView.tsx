@@ -9,7 +9,9 @@ import {
   X,
   Edit,
   Trash2,
-  Power
+  Power,
+  LogOut,
+  KeyRound
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useAuth } from '../context/AuthContext';
@@ -28,13 +30,13 @@ export const EmployeesView: React.FC = () => {
     profile, 
     role, 
     isAuthorizedAdmin,
-    adminClaimedAt,
     createStaffAccount, 
     updateUserRole, 
     updateStaffMember, 
     deleteStaffProfile,
     syncManagerSlots,
-    cleanupPreResetAdminManagers
+    cleanupPreResetAdminManagers,
+    releaseAdminOwnership
   } = useAuth();
 
   // Add Staff modal states
@@ -55,6 +57,8 @@ export const EmployeesView: React.FC = () => {
   // Delete Staff confirmation modal
   const [deletingStaff, setDeletingStaff] = useState<UserProfile | null>(null);
 
+  const [isReleasingOwnership, setIsReleasingOwnership] = useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -62,18 +66,11 @@ export const EmployeesView: React.FC = () => {
 
   const canManageRoles = role === 'admin' && isAuthorizedAdmin;
 
-  // Detect any stale Admin/Manager docs created before the current Admin lock reset
+  // Only flag stray secondary Admin role records (valid Managers & Billing Staff are preserved across Admin transfers)
   const stalePreResetRecords = React.useMemo(() => {
     if (!canManageRoles || !user?.uid) return [];
-    return employees.filter((e) => {
-      if (e.id === user.uid) return false;
-      if (e.role === 'admin') return true;
-      if (e.role === 'manager' && adminClaimedAt && (!e.createdAt || e.createdAt < adminClaimedAt)) {
-        return true;
-      }
-      return false;
-    });
-  }, [canManageRoles, employees, user?.uid, adminClaimedAt]);
+    return employees.filter((e) => e.id !== user.uid && e.role === 'admin');
+  }, [canManageRoles, employees, user?.uid]);
 
   useEffect(() => {
     if (canManageRoles && employees.length > 0 && stalePreResetRecords.length === 0) {
@@ -212,6 +209,18 @@ export const EmployeesView: React.FC = () => {
     }
   };
 
+  const handleConfirmReleaseOwnership = async () => {
+    try {
+      setIsReleasingOwnership(true);
+      setPageError(null);
+      await releaseAdminOwnership();
+    } catch (err: unknown) {
+      setPageError(err instanceof Error ? err.message : 'Failed to release Admin ownership');
+    } finally {
+      setIsReleasingOwnership(false);
+    }
+  };
+
   const displayEmployees = employees.length > 0 ? employees : (profile ? [profile] : []);
 
   if (!canManageRoles) {
@@ -334,6 +343,31 @@ export const EmployeesView: React.FC = () => {
           </div>
           <div className="text-xl font-bold text-white font-mono">{billingCount} Active/Total</div>
           <p className="text-[11px] text-slate-400 mt-0.5">POS Billing, Returns, Sales &amp; Customers</p>
+        </div>
+      </div>
+
+      {/* Primary Admin Session & Change Admin Card */}
+      <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-rose-400" />
+            <h3 className="font-bold text-white text-sm">Primary Admin Session &amp; Change Admin</h3>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
+            Signed in as Primary Admin <strong className="text-slate-200">{profile?.name || user?.email}</strong> ({user?.email}). Clicking <strong className="text-slate-200">Logout</strong> releases your Primary Admin role, signs you out, and opens the New Admin Registration form while preserving all store records.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            disabled={isReleasingOwnership}
+            onClick={handleConfirmReleaseOwnership}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 border border-rose-500/30 text-xs font-semibold transition disabled:opacity-50"
+          >
+            <LogOut className="w-4 h-4 text-rose-400" />
+            <span>{isReleasingOwnership ? 'Logging out...' : 'Logout'}</span>
+          </button>
         </div>
       </div>
 

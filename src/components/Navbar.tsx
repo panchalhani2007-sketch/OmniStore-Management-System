@@ -29,11 +29,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   mobileMenuOpen,
   setMobileMenuOpen,
 }) => {
-  const { user, profile, role, isAuthorizedAdmin, simulatedRole, setSimulatedRole, signOut } = useAuth();
+  const { user, profile, role, isAuthorizedAdmin, simulatedRole, setSimulatedRole, signOut, releaseAdminOwnership } = useAuth();
   const { products, categories, settings, syncTimestamp } = useStore();
 
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [alertDropdownOpen, setAlertDropdownOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const alertContainerRef = useRef<HTMLDivElement>(null);
   const roleContainerRef = useRef<HTMLDivElement>(null);
 
@@ -348,11 +349,28 @@ export const Navbar: React.FC<NavbarProps> = ({
               </p>
             </div>
             <button
-              onClick={() => signOut()}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 border border-slate-700/80 transition"
-              title="Sign Out"
+              type="button"
+              disabled={loggingOut}
+              onClick={async () => {
+                try {
+                  setLoggingOut(true);
+                  if (isAuthorizedAdmin) {
+                    await releaseAdminOwnership();
+                  } else {
+                    await signOut();
+                  }
+                } catch (err) {
+                  console.error('Logout error:', err);
+                } finally {
+                  setLoggingOut(false);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-200 hover:text-rose-400 border border-slate-700/80 text-xs font-semibold transition disabled:opacity-50"
+              title={isAuthorizedAdmin ? 'Logout & Release Primary Admin Role' : 'Logout'}
+              aria-label="Logout"
             >
               <LogOut className="w-4 h-4" />
+              <span>{loggingOut ? 'Logging out...' : 'Logout'}</span>
             </button>
           </div>
         </div>

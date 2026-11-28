@@ -120,6 +120,17 @@ function MainApp() {
     };
   }, [loading, user, roleInfo, isTabAllowed, currentTab]);
 
+  // Reset active route on sign-out so a newly registered Admin lands cleanly on the Admin Dashboard
+  useEffect(() => {
+    if (!loading && !user) {
+      setCurrentTab('inventory');
+      setBlockedUrlNotice(null);
+      if (window.location.pathname !== '/' && window.location.pathname !== '/inventory') {
+        window.history.replaceState(null, '', '/');
+      }
+    }
+  }, [loading, user]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-100">

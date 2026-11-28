@@ -17,23 +17,29 @@
     },
     "AdminLock": {
       "title": "AdminLock",
-      "description": "Immutable singleton binding the single authorized Admin UID and email",
+      "description": "Singleton binding the single active Primary Admin UID and email, with explicit ownership release flag",
       "type": "object",
       "properties": {
         "adminUid": { "type": "string" },
         "adminEmail": { "type": "string" },
         "locked": { "type": "boolean" },
-        "claimedAt": { "type": "string" }
+        "ownershipReleased": { "type": "boolean" },
+        "claimedAt": { "type": "string" },
+        "releasedAt": { "type": "string" },
+        "previousAdminUid": { "type": "string" }
       },
       "required": ["adminUid", "adminEmail", "locked", "claimedAt"]
     },
     "AdminStatus": {
       "title": "AdminStatus",
-      "description": "Non-PII public indicator showing whether the initial Admin account has been configured",
+      "description": "Non-PII public indicator showing whether the Primary Admin slot is locked or released for transfer",
       "type": "object",
       "properties": {
         "locked": { "type": "boolean" },
-        "claimedAt": { "type": "string" }
+        "ownershipReleased": { "type": "boolean" },
+        "claimedAt": { "type": "string" },
+        "releasedAt": { "type": "string" },
+        "pendingTransferUid": { "type": "string" }
       },
       "required": ["locked", "claimedAt"]
     },

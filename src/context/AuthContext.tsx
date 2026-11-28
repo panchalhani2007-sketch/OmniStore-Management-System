@@ -14,6 +14,7 @@ import {
   getDocs,
   onSnapshot,
   query,
+  runTransaction,
   setDoc,
   where,
   writeBatch
@@ -33,6 +34,7 @@ interface AuthContextType {
   role: UserRole;
   isAuthorizedAdmin: boolean;
   adminInitialized: boolean;
+  adminOwnershipReleased: boolean;
   adminInitLoading: boolean;
   adminClaimedAt: string | null;
   simulatedRole: UserRole | null;
@@ -41,6 +43,8 @@ interface AuthContextType {
   isAccountDisabled: boolean;
   isUnauthorizedAccount: boolean;
   registerFirstAdmin: (email: string, pass: string, name: string) => Promise<void>;
+  registerNewAdmin: (email: string, pass: string, name: string) => Promise<void>;
+  releaseAdminOwnership: () => Promise<void>;
   signInWithEmail: (email: string, pass: string, expectedRole: UserRole) => Promise<void>;
   signUpWithEmail: (email: string, pass: string, name: string, requestedRole?: UserRole) => Promise<void>;
   createStaffAccount: (email: string, pass: string, name: string, role: UserRole, phone?: string) => Promise<void>;
@@ -60,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLockAdmin, setIsLockAdmin] = useState<boolean>(false);
   const [adminInitialized, setAdminInitialized] = useState<boolean>(false);
+  const [adminOwnershipReleased, setAdminOwnershipReleased] = useState<boolean>(false);
   const [adminInitLoading, setAdminInitLoading] = useState<boolean>(true);
   const [adminClaimedAt, setAdminClaimedAt] = useState<string | null>(null);
   const [simulatedRole, setSimulatedRole] = useState<UserRole | null>(null);
@@ -70,17 +75,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const verifyingLoginRef = React.useRef<boolean>(false);
   const unsubProfileRef = React.useRef<(() => void) | null>(null);
 
-  // Test Firestore connection and track public non-PII admin initialization status
+  // Test Firestore connection and track public non-PII admin initialization & release status
   useEffect(() => {
     testConnection();
     const unsubAdminStatus = onSnapshot(
       doc(db, 'system_config', 'admin_status'),
       (snap) => {
-        if (snap.exists() && snap.data()?.locked === true) {
-          setAdminInitialized(true);
-          setAdminClaimedAt((snap.data()?.claimedAt as string) || null);
+        if (snap.exists()) {
+          const data = snap.data();
+          const isLocked = data?.locked === true && data?.ownershipReleased !== true;
+          const isReleased = data?.locked === false && data?.ownershipReleased === true;
+          setAdminInitialized(isLocked);
+          setAdminOwnershipReleased(isReleased);
+          setAdminClaimedAt((data?.claimedAt as string) || null);
         } else {
           setAdminInitialized(false);
+          setAdminOwnershipReleased(false);
           setAdminClaimedAt(null);
         }
         setAdminInitLoading(false);
@@ -152,7 +162,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (lockSnap.exists()) {
           const lockData = lockSnap.data();
           const emailLower = (fbUser.email || '').trim().toLowerCase();
-          if (lockData.adminUid === fbUser.uid && lockData.adminEmail === emailLower && lockData.locked === true) {
+          if (
+            lockData.adminUid === fbUser.uid &&
+            lockData.adminEmail === emailLower &&
+            lockData.locked === true &&
+            lockData.ownershipReleased !== true
+          ) {
             return {
               profile: { ...data, role: 'admin', status: 'active' },
               isLockAdmin: true
@@ -329,7 +344,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // One-time secure creation of the single authorized Admin account
+  // One-time secure creation of the initial Primary Admin account (transactional)
   const registerFirstAdmin = async (email: string, pass: string, name: string) => {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !pass || !name.trim()) {
@@ -337,8 +352,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const statusSnap = await getDoc(doc(db, 'system_config', 'admin_status'));
-    if (statusSnap.exists() && statusSnap.data()?.locked === true) {
-      throw new Error('An authorized Admin account already exists. Only 1 Admin account is allowed.');
+    if (statusSnap.exists()) {
+      const data = statusSnap.data();
+      if (data?.locked === false && data?.ownershipReleased === true) {
+        await registerNewAdmin(email, pass, name);
+        return;
+      }
+      throw new Error('A Primary Admin account already exists. Only 1 Primary Admin is allowed.');
     }
 
     verifyingLoginRef.current = true;
@@ -346,6 +366,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
       const now = new Date().toISOString();
+      const normalizedEmail = (cred.user.email || cleanEmail).toLowerCase();
       const adminProfile: UserProfile = {
         id: cred.user.uid,
         email: cred.user.email || cleanEmail,
@@ -357,24 +378,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       try {
-        const batch = writeBatch(db);
-        batch.set(doc(db, 'system_config', 'admin_lock'), {
-          adminUid: cred.user.uid,
-          adminEmail: (cred.user.email || cleanEmail).toLowerCase(),
-          locked: true,
-          claimedAt: now
+        await runTransaction(db, async (tx) => {
+          const currentStatus = await tx.get(doc(db, 'system_config', 'admin_status'));
+          if (currentStatus.exists()) {
+            throw new Error('Admin setup is locked: a Primary Admin account already exists.');
+          }
+          tx.set(doc(db, 'system_config', 'admin_lock'), {
+            adminUid: cred.user.uid,
+            adminEmail: normalizedEmail,
+            locked: true,
+            ownershipReleased: false,
+            claimedAt: now
+          });
+          tx.set(doc(db, 'system_config', 'admin_status'), {
+            locked: true,
+            ownershipReleased: false,
+            claimedAt: now
+          });
+          tx.set(doc(db, 'users', cred.user.uid), adminProfile);
         });
-        batch.set(doc(db, 'system_config', 'admin_status'), {
-          locked: true,
-          claimedAt: now
-        });
-        batch.set(doc(db, 'users', cred.user.uid), adminProfile);
-        await batch.commit();
 
         setUser(cred.user);
         setProfile(adminProfile);
         setIsLockAdmin(true);
         setAdminInitialized(true);
+        setAdminOwnershipReleased(false);
         setAdminClaimedAt(now);
         setIsUnauthorizedAccount(false);
         attachProfileListener(cred.user.uid, true);
@@ -383,8 +411,186 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Clean up the unclaimed Firebase Auth user if backend rejected duplicate Admin claim
         await cred.user.delete().catch(() => fbSignOut(auth));
         const msg = err instanceof Error ? err.message : '';
-        if (msg.toLowerCase().includes('permission')) {
-          throw new Error('Admin setup is locked: an authorized Admin account already exists.');
+        if (msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('already exists')) {
+          throw new Error('Admin setup is locked: a Primary Admin account already exists.');
+        }
+        handleFirestoreError(err, OperationType.WRITE, 'system_config/admin_lock');
+      }
+    } finally {
+      signingUpRef.current = false;
+      verifyingLoginRef.current = false;
+    }
+  };
+
+  // Explicit Primary Admin ownership release -> puts system into secure setup-pending state and ends session
+  const releaseAdminOwnership = async () => {
+    if (!isLockAdmin || !user?.uid) {
+      throw new Error('Only the active Primary Admin can release Admin ownership.');
+    }
+
+    const now = new Date().toISOString();
+    try {
+      await runTransaction(db, async (tx) => {
+        const lockRef = doc(db, 'system_config', 'admin_lock');
+        const statusRef = doc(db, 'system_config', 'admin_status');
+        const userRef = doc(db, 'users', user.uid);
+
+        const [lockSnap, statusSnap, userSnap] = await Promise.all([
+          tx.get(lockRef),
+          tx.get(statusRef),
+          tx.get(userRef)
+        ]);
+
+        if (!lockSnap.exists()) {
+          throw new Error('Primary Admin lock record was not found.');
+        }
+        const lockData = lockSnap.data();
+        if (lockData.adminUid !== user.uid || lockData.locked === false || lockData.ownershipReleased === true) {
+          throw new Error('Primary Admin ownership is not currently locked to your account.');
+        }
+        if (!userSnap.exists()) {
+          throw new Error('Primary Admin profile record was not found.');
+        }
+
+        const existingClaimedAt =
+          (statusSnap.exists() ? (statusSnap.data().claimedAt as string) : undefined) ||
+          (lockData.claimedAt as string) ||
+          now;
+
+        tx.update(lockRef, {
+          locked: false,
+          ownershipReleased: true,
+          releasedAt: now
+        });
+
+        tx.update(statusRef, {
+          locked: false,
+          ownershipReleased: true,
+          claimedAt: existingClaimedAt,
+          releasedAt: now,
+          pendingTransferUid: user.uid
+        });
+      });
+
+      setAdminInitialized(false);
+      setAdminOwnershipReleased(true);
+      await signOut();
+    } catch (err) {
+      if (err instanceof Error && (err.message.includes('Primary Admin') || err.message.includes('lock record'))) {
+        throw err;
+      }
+      handleFirestoreError(err, OperationType.UPDATE, 'system_config/admin_lock');
+    }
+  };
+
+  // Transactional New Primary Admin registration (only valid after previous Admin explicitly released ownership)
+  const registerNewAdmin = async (email: string, pass: string, name: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim();
+    if (!cleanEmail || !pass || !cleanName) {
+      throw new Error('Full name, email, and password are required.');
+    }
+
+    const preCheckSnap = await getDoc(doc(db, 'system_config', 'admin_status'));
+    if (!preCheckSnap.exists()) {
+      await registerFirstAdmin(email, pass, name);
+      return;
+    }
+
+    const preData = preCheckSnap.data();
+    if (preData?.locked !== false || preData?.ownershipReleased !== true || !preData?.pendingTransferUid) {
+      throw new Error(
+        'New Admin registration is disabled. The current Primary Admin must explicitly release Admin ownership first.'
+      );
+    }
+
+    verifyingLoginRef.current = true;
+    signingUpRef.current = true;
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+      const now = new Date().toISOString();
+      const normalizedEmail = (cred.user.email || cleanEmail).toLowerCase();
+      const newAdminProfile: UserProfile = {
+        id: cred.user.uid,
+        email: cred.user.email || cleanEmail,
+        name: cleanName,
+        role: 'admin',
+        status: 'active',
+        createdAt: now,
+        updatedAt: now
+      };
+
+      try {
+        await runTransaction(db, async (tx) => {
+          const statusRef = doc(db, 'system_config', 'admin_status');
+          const lockRef = doc(db, 'system_config', 'admin_lock');
+          const statusSnap = await tx.get(statusRef);
+
+          if (!statusSnap.exists()) {
+            throw new Error('Admin transfer state is invalid.');
+          }
+          const statusData = statusSnap.data();
+          const prevAdminUid = statusData.pendingTransferUid as string | undefined;
+
+          if (
+            statusData.locked !== false ||
+            statusData.ownershipReleased !== true ||
+            !prevAdminUid ||
+            prevAdminUid === cred.user.uid
+          ) {
+            throw new Error(
+              'Admin ownership is already locked by another Primary Admin. Registration rejected.'
+            );
+          }
+
+          // 1. Create new Primary Admin user profile
+          tx.set(doc(db, 'users', cred.user.uid), newAdminProfile);
+
+          // 2. Lock Primary Admin singleton exclusively to the new user
+          tx.set(lockRef, {
+            adminUid: cred.user.uid,
+            adminEmail: normalizedEmail,
+            locked: true,
+            ownershipReleased: false,
+            claimedAt: now,
+            previousAdminUid: prevAdminUid
+          });
+
+          // 3. Clear setup-pending status so no one else can register as Admin
+          tx.set(statusRef, {
+            locked: true,
+            ownershipReleased: false,
+            claimedAt: now
+          });
+
+          // 4. Automatically revoke previous Admin's privileges while preserving their user record
+          tx.update(doc(db, 'users', prevAdminUid), {
+            role: 'billing',
+            status: 'inactive',
+            updatedAt: now
+          });
+        });
+
+        setUser(cred.user);
+        setProfile(newAdminProfile);
+        setIsLockAdmin(true);
+        setAdminInitialized(true);
+        setAdminOwnershipReleased(false);
+        setAdminClaimedAt(now);
+        setIsUnauthorizedAccount(false);
+        attachProfileListener(cred.user.uid, true);
+        setLoading(false);
+      } catch (err) {
+        // Roll back unclaimed Auth user if transaction failed or rules rejected duplicate/unauthorized attempt
+        await cred.user.delete().catch(() => fbSignOut(auth));
+        const msg = err instanceof Error ? err.message : '';
+        if (msg.toLowerCase().includes('permission') || msg.toLowerCase().includes('locked')) {
+          throw new Error(
+            'Admin ownership transfer could not be completed. Either another Admin already registered or you do not have permission.'
+          );
+        }
+        if (msg.includes('Admin transfer state')) {
+          throw err;
         }
         handleFirestoreError(err, OperationType.WRITE, 'system_config/admin_lock');
       }
@@ -402,6 +608,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!resolved) {
         await fbSignOut(auth);
+        if (expectedRole === 'admin' && adminOwnershipReleased) {
+          throw new Error(
+            'Admin ownership has been released and is awaiting a new Primary Admin registration.'
+          );
+        }
         throw new Error('Account not authorized. Please complete initial setup or ask the Admin to create your staff account.');
       }
 
@@ -712,6 +923,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: effectiveRole,
         isAuthorizedAdmin: isLockAdmin,
         adminInitialized,
+        adminOwnershipReleased,
         adminInitLoading,
         adminClaimedAt,
         simulatedRole,
@@ -720,6 +932,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAccountDisabled,
         isUnauthorizedAccount,
         registerFirstAdmin,
+        registerNewAdmin,
+        releaseAdminOwnership,
         signInWithEmail,
         signUpWithEmail,
         createStaffAccount,

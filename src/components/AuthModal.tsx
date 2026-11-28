@@ -45,16 +45,17 @@ const LOGIN_ROLES: Array<{
 export const AuthModal: React.FC = () => {
   const {
     adminInitialized,
+    adminOwnershipReleased,
     adminInitLoading,
     registerFirstAdmin,
+    registerNewAdmin,
     signInWithEmail,
     signUpWithEmail,
     sendResetEmail
   } = useAuth();
 
-  const [mode, setMode] = useState<'setup_admin' | 'signin' | 'signup' | 'forgot'>('signin');
+  const [mode, setMode] = useState<'setup_admin' | 'register_new_admin' | 'signin' | 'signup' | 'forgot'>('signin');
   const [selectedRole, setSelectedRole] = useState<UserRole>('admin');
-  const [registerRole, setRegisterRole] = useState<UserRole>('billing');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -63,22 +64,30 @@ export const AuthModal: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Automatically default to Initial Admin Setup when no Admin has been configured yet
+  // Sync mode with Admin lock / ownership release state
   useEffect(() => {
     if (adminInitLoading) return;
-    if (!adminInitialized) {
+    if (adminOwnershipReleased) {
+      setMode('register_new_admin');
+    } else if (!adminInitialized) {
       setMode('setup_admin');
-    } else if (mode === 'setup_admin') {
+    } else if (mode === 'setup_admin' || mode === 'register_new_admin') {
       setMode('signin');
     }
-  }, [adminInitialized, adminInitLoading]);
+  }, [adminInitialized, adminOwnershipReleased, adminInitLoading]);
+
+  const isAdminRegistrationMode = mode === 'setup_admin' || mode === 'register_new_admin';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
 
-    if (mode === 'setup_admin') {
+    if (isAdminRegistrationMode) {
+      if (!name.trim()) {
+        setError('Full name is required.');
+        return;
+      }
       if (password.length < 6) {
         setError('Password must be at least 6 characters.');
         return;
@@ -93,10 +102,12 @@ export const AuthModal: React.FC = () => {
     try {
       if (mode === 'setup_admin') {
         await registerFirstAdmin(email, password, name);
+      } else if (mode === 'register_new_admin') {
+        await registerNewAdmin(email, password, name);
       } else if (mode === 'signin') {
         await signInWithEmail(email, password, selectedRole);
       } else if (mode === 'signup') {
-        await signUpWithEmail(email, password, name, registerRole);
+        await signUpWithEmail(email, password, name, 'billing');
       } else if (mode === 'forgot') {
         await sendResetEmail(email);
         setSuccessMsg('Password reset email sent! Check your inbox.');
@@ -106,7 +117,7 @@ export const AuthModal: React.FC = () => {
       if (msg.includes('user-not-found') || msg.includes('invalid-credential')) {
         setError('Invalid email or password. Please check your credentials.');
       } else if (msg.includes('email-already-in-use')) {
-        setError('This email is already registered. Please sign in instead.');
+        setError('This email is already registered. Please use a different email or sign in instead.');
       } else if (msg.includes('weak-password')) {
         setError('Password should be at least 6 characters.');
       } else if (msg.includes('auth/operation-not-allowed') || msg.includes('operation-not-allowed')) {
@@ -118,6 +129,17 @@ export const AuthModal: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const resetMessages = () => {
+    setError(null);
+    setSuccessMsg(null);
+  };
+
+  const defaultIdleMode = adminOwnershipReleased
+    ? 'register_new_admin'
+    : !adminInitialized
+      ? 'setup_admin'
+      : 'signin';
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -137,14 +159,27 @@ export const AuthModal: React.FC = () => {
           </p>
         </div>
 
+        {/* New Admin Registration Banner when previous Admin explicitly released ownership */}
+        {!adminInitLoading && adminOwnershipReleased && (
+          <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-white">New Admin Registration</p>
+              <p className="text-[11px] text-amber-200/85 mt-0.5">
+                The previous Primary Admin has logged out and released ownership. Register the new Primary Admin below. Previous Admin privileges are revoked automatically upon registration.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Initial Admin Setup Banner (Shown ONLY before the first Admin account is created) */}
-        {!adminInitLoading && !adminInitialized && (
+        {!adminInitLoading && !adminInitialized && !adminOwnershipReleased && (
           <div className="mb-4 p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 text-xs flex items-start gap-2.5">
             <Sparkles className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold text-white">Fresh Setup: No Admin Configured</p>
               <p className="text-[11px] text-indigo-200/80 mt-0.5">
-                Create the first and only authorized Admin account below. Once created, Admin registration locks permanently.
+                Create the first and only authorized Admin account below. Once created, Admin registration locks automatically.
               </p>
             </div>
           </div>
@@ -155,31 +190,55 @@ export const AuthModal: React.FC = () => {
           <div className="mb-4">
             <button
               type="button"
-              onClick={() => { setMode(adminInitialized ? 'signin' : 'setup_admin'); setError(null); setSuccessMsg(null); }}
+              onClick={() => { setMode(defaultIdleMode); resetMessages(); }}
               className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1"
             >
               ← Back
+            </button>
+          </div>
+        ) : !adminInitLoading && adminOwnershipReleased ? (
+          <div className="grid grid-cols-3 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-[11px] font-semibold">
+            <button
+              type="button"
+              onClick={() => { setMode('register_new_admin'); resetMessages(); }}
+              className={`py-1.5 px-1 rounded-lg transition ${mode === 'register_new_admin' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+            >
+              Register New Admin
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('signin'); resetMessages(); }}
+              className={`py-1.5 px-1 rounded-lg transition ${mode === 'signin' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('signup'); resetMessages(); }}
+              className={`py-1.5 px-1 rounded-lg transition ${mode === 'signup' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+            >
+              Register Staff
             </button>
           </div>
         ) : !adminInitLoading && !adminInitialized ? (
           <div className="grid grid-cols-3 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-xs font-semibold">
             <button
               type="button"
-              onClick={() => { setMode('setup_admin'); setError(null); setSuccessMsg(null); }}
+              onClick={() => { setMode('setup_admin'); resetMessages(); }}
               className={`py-1.5 rounded-lg transition ${mode === 'setup_admin' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
             >
               Admin Setup
             </button>
             <button
               type="button"
-              onClick={() => { setMode('signin'); setError(null); setSuccessMsg(null); }}
+              onClick={() => { setMode('signin'); resetMessages(); }}
               className={`py-1.5 rounded-lg transition ${mode === 'signin' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
             >
               Sign In
             </button>
             <button
               type="button"
-              onClick={() => { setMode('signup'); setError(null); setSuccessMsg(null); }}
+              onClick={() => { setMode('signup'); resetMessages(); }}
               className={`py-1.5 rounded-lg transition ${mode === 'signup' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
             >
               Register Staff
@@ -189,14 +248,14 @@ export const AuthModal: React.FC = () => {
           <div className="grid grid-cols-2 p-1 bg-slate-800/80 rounded-xl mb-4 border border-slate-700/60 text-xs font-semibold">
             <button
               type="button"
-              onClick={() => { setMode('signin'); setError(null); setSuccessMsg(null); }}
+              onClick={() => { setMode('signin'); resetMessages(); }}
               className={`py-1.5 rounded-lg transition ${mode === 'signin' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
             >
               Sign In
             </button>
             <button
               type="button"
-              onClick={() => { setMode('signup'); setError(null); setSuccessMsg(null); }}
+              onClick={() => { setMode('signup'); resetMessages(); }}
               className={`py-1.5 rounded-lg transition ${mode === 'signup' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
             >
               Register Staff
@@ -251,10 +310,10 @@ export const AuthModal: React.FC = () => {
             </div>
           )}
 
-          {(mode === 'signup' || mode === 'setup_admin') && (
+          {(mode === 'signup' || isAdminRegistrationMode) && (
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1">
-                {mode === 'setup_admin' ? 'Admin Full Name' : 'Full Name'}
+                {isAdminRegistrationMode ? 'Primary Admin Full Name' : 'Full Name'}
               </label>
               <div className="relative">
                 <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -272,7 +331,7 @@ export const AuthModal: React.FC = () => {
 
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              {mode === 'setup_admin' ? 'Authorized Admin Email' : 'Work Email'}
+              {isAdminRegistrationMode ? 'New Primary Admin Email' : 'Work Email'}
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -294,7 +353,7 @@ export const AuthModal: React.FC = () => {
                 {mode === 'signin' && (
                   <button
                     type="button"
-                    onClick={() => { setMode('forgot'); setError(null); setSuccessMsg(null); }}
+                    onClick={() => { setMode('forgot'); resetMessages(); }}
                     className="text-[11px] text-indigo-400 hover:text-indigo-300"
                   >
                     Forgot password?
@@ -316,9 +375,9 @@ export const AuthModal: React.FC = () => {
             </div>
           )}
 
-          {mode === 'setup_admin' && (
+          {isAdminRegistrationMode && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Confirm Admin Password</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1">Confirm Password</label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
@@ -335,31 +394,13 @@ export const AuthModal: React.FC = () => {
           )}
 
           {mode === 'signup' && (
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Assigned Store Role</label>
-              <div className="relative">
-                <ShieldCheck className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                <select
-                  value={registerRole}
-                  onChange={(e) => {
-                    setRegisterRole(e.target.value as UserRole);
-                    setError(null);
-                  }}
-                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-indigo-500"
-                >
-                  <option value="admin">Admin</option>
-                  <option value="manager">Manager</option>
-                  <option value="billing">Billing Staff</option>
-                </select>
+            <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/70 space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                <ShoppingCart className="w-3.5 h-3.5" />
+                <span>Assigned Store Role: Billing Staff</span>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
-                {registerRole === 'admin'
-                  ? adminInitialized
-                    ? 'Locked: An authorized Admin account already exists (1 account max).'
-                    : 'No Admin configured yet. Registering will lock this account as the single authorized Admin.'
-                  : registerRole === 'manager'
-                    ? 'Manager role (max 2 accounts) can only be assigned by the authorized Admin in Staff & Roles.'
-                    : 'Admin and Manager roles can only be assigned by the authorized Admin. Standard staff register as Billing Staff.'}
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Self-registration creates Billing Staff accounts only. Primary Admin and Manager privileges cannot be self-assigned.
               </p>
             </div>
           )}
@@ -371,6 +412,11 @@ export const AuthModal: React.FC = () => {
           >
             {loading ? (
               <span>Verifying Access...</span>
+            ) : mode === 'register_new_admin' ? (
+              <>
+                <span>Register New Admin</span>
+                <ShieldCheck className="w-4 h-4" />
+              </>
             ) : mode === 'setup_admin' ? (
               <>
                 <span>Create First Authorized Admin</span>

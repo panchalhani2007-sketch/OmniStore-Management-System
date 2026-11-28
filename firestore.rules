@@ -20,13 +20,29 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/system_config/admin_lock);
     }
 
-    // Enforce single authorized Admin account bound to immutable /system_config/admin_lock (limit = 1)
+    function adminLockDoc() {
+      return get(/databases/$(database)/documents/system_config/admin_lock);
+    }
+
+    function adminLockIsLocked() {
+      return adminLockExists() &&
+        adminLockDoc().data.get('locked', true) == true &&
+        adminLockDoc().data.get('ownershipReleased', false) == false;
+    }
+
+    function adminLockIsReleased() {
+      return adminLockExists() &&
+        adminLockDoc().data.get('locked', true) == false &&
+        adminLockDoc().data.get('ownershipReleased', false) == true;
+    }
+
+    // Enforce single active Primary Admin bound to /system_config/admin_lock (limit = 1)
     function isAuthorizedAdmin() {
       return isSignedIn() &&
-        adminLockExists() &&
-        get(/databases/$(database)/documents/system_config/admin_lock).data.adminUid == request.auth.uid &&
+        adminLockIsLocked() &&
+        adminLockDoc().data.adminUid == request.auth.uid &&
         ('email' in request.auth.token) &&
-        get(/databases/$(database)/documents/system_config/admin_lock).data.adminEmail == request.auth.token.email.lower();
+        adminLockDoc().data.adminEmail == request.auth.token.email.lower();
     }
 
     function hasUserDoc() {
@@ -96,16 +112,16 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Immutable first-run Admin setup lock & non-PII status flag
+    // Primary Admin singleton lock & non-PII setup/transfer status flag
     match /system_config/{docId} {
-      // admin_status has zero PII and indicates whether initial Admin setup is complete
+      // admin_status has zero PII and indicates whether Primary Admin is locked or released for transfer
       allow get: if (docId == 'admin_status') ||
         (docId == 'admin_lock' && isSignedIn() && resource != null && resource.data.adminUid == request.auth.uid);
       allow list: if false;
       allow create: if isSignedIn() && !adminLockExists() && (
         (docId == 'admin_lock' &&
           request.resource.data.keys().hasAll(['adminUid', 'adminEmail', 'locked', 'claimedAt']) &&
-          request.resource.data.keys().hasOnly(['adminUid', 'adminEmail', 'locked', 'claimedAt']) &&
+          request.resource.data.keys().hasOnly(['adminUid', 'adminEmail', 'locked', 'ownershipReleased', 'claimedAt']) &&
           request.resource.data.adminUid == request.auth.uid &&
           request.resource.data.adminEmail is string &&
           request.resource.data.adminEmail.size() > 0 &&
@@ -113,20 +129,95 @@ service cloud.firestore {
           ('email' in request.auth.token) &&
           request.resource.data.adminEmail == request.auth.token.email.lower() &&
           request.resource.data.locked == true &&
+          request.resource.data.get('ownershipReleased', false) == false &&
           existsAfter(/databases/$(database)/documents/system_config/admin_status) &&
+          getAfter(/databases/$(database)/documents/system_config/admin_status).data.locked == true &&
           existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)) &&
           getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
           getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active') ||
         (docId == 'admin_status' &&
           request.resource.data.keys().hasAll(['locked', 'claimedAt']) &&
-          request.resource.data.keys().hasOnly(['locked', 'claimedAt']) &&
+          request.resource.data.keys().hasOnly(['locked', 'ownershipReleased', 'claimedAt']) &&
           request.resource.data.locked == true &&
+          request.resource.data.get('ownershipReleased', false) == false &&
           request.resource.data.claimedAt is string &&
           request.resource.data.claimedAt.size() <= 64 &&
           existsAfter(/databases/$(database)/documents/system_config/admin_lock) &&
           getAfter(/databases/$(database)/documents/system_config/admin_lock).data.adminUid == request.auth.uid)
       );
-      allow update, delete: if false;
+      allow update: if isSignedIn() && adminLockExists() && (
+        // Current Primary Admin explicitly releasing Admin ownership -> enters setup-pending state
+        (docId == 'admin_lock' &&
+          isAuthorizedAdmin() &&
+          resource.data.get('locked', true) == true &&
+          resource.data.get('ownershipReleased', false) == false &&
+          request.resource.data.keys().hasAll(['adminUid', 'adminEmail', 'locked', 'ownershipReleased', 'claimedAt', 'releasedAt']) &&
+          request.resource.data.keys().hasOnly(['adminUid', 'adminEmail', 'locked', 'ownershipReleased', 'claimedAt', 'releasedAt', 'previousAdminUid']) &&
+          request.resource.data.adminUid == resource.data.adminUid &&
+          request.resource.data.adminEmail == resource.data.adminEmail &&
+          request.resource.data.claimedAt == resource.data.claimedAt &&
+          request.resource.data.locked == false &&
+          request.resource.data.ownershipReleased == true &&
+          request.resource.data.releasedAt is string &&
+          request.resource.data.releasedAt.size() <= 64 &&
+          getAfter(/databases/$(database)/documents/system_config/admin_status).data.locked == false &&
+          getAfter(/databases/$(database)/documents/system_config/admin_status).data.ownershipReleased == true &&
+          getAfter(/databases/$(database)/documents/system_config/admin_status).data.pendingTransferUid == resource.data.adminUid) ||
+        (docId == 'admin_status' &&
+          isAuthorizedAdmin() &&
+          resource.data.get('locked', true) == true &&
+          resource.data.get('ownershipReleased', false) == false &&
+          request.resource.data.keys().hasAll(['locked', 'ownershipReleased', 'claimedAt', 'releasedAt', 'pendingTransferUid']) &&
+          request.resource.data.keys().hasOnly(['locked', 'ownershipReleased', 'claimedAt', 'releasedAt', 'pendingTransferUid']) &&
+          request.resource.data.locked == false &&
+          request.resource.data.ownershipReleased == true &&
+          request.resource.data.pendingTransferUid == request.auth.uid &&
+          request.resource.data.claimedAt == resource.data.claimedAt &&
+          request.resource.data.releasedAt is string &&
+          request.resource.data.releasedAt.size() <= 64 &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.locked == false &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.ownershipReleased == true) ||
+        // New Primary Admin atomically claiming released Admin ownership & revoking previous Admin
+        (docId == 'admin_lock' &&
+          resource.data.get('locked', true) == false &&
+          resource.data.get('ownershipReleased', false) == true &&
+          request.auth.uid != resource.data.adminUid &&
+          !exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          request.resource.data.keys().hasAll(['adminUid', 'adminEmail', 'locked', 'ownershipReleased', 'claimedAt', 'previousAdminUid']) &&
+          request.resource.data.keys().hasOnly(['adminUid', 'adminEmail', 'locked', 'ownershipReleased', 'claimedAt', 'previousAdminUid']) &&
+          request.resource.data.adminUid == request.auth.uid &&
+          request.resource.data.adminEmail is string &&
+          request.resource.data.adminEmail.size() > 0 &&
+          request.resource.data.adminEmail.size() <= 254 &&
+          ('email' in request.auth.token) &&
+          request.resource.data.adminEmail == request.auth.token.email.lower() &&
+          request.resource.data.locked == true &&
+          request.resource.data.ownershipReleased == false &&
+          request.resource.data.previousAdminUid == resource.data.adminUid &&
+          request.resource.data.claimedAt is string &&
+          request.resource.data.claimedAt.size() <= 64 &&
+          getAfter(/databases/$(database)/documents/system_config/admin_status).data.locked == true &&
+          getAfter(/databases/$(database)/documents/system_config/admin_status).data.ownershipReleased == false &&
+          getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+          getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'active' &&
+          getAfter(/databases/$(database)/documents/users/$(resource.data.adminUid)).data.role == 'billing' &&
+          getAfter(/databases/$(database)/documents/users/$(resource.data.adminUid)).data.status == 'inactive') ||
+        (docId == 'admin_status' &&
+          resource.data.get('locked', true) == false &&
+          resource.data.get('ownershipReleased', false) == true &&
+          request.auth.uid != resource.data.get('pendingTransferUid', '') &&
+          !exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          request.resource.data.keys().hasAll(['locked', 'ownershipReleased', 'claimedAt']) &&
+          request.resource.data.keys().hasOnly(['locked', 'ownershipReleased', 'claimedAt']) &&
+          request.resource.data.locked == true &&
+          request.resource.data.ownershipReleased == false &&
+          request.resource.data.claimedAt is string &&
+          request.resource.data.claimedAt.size() <= 64 &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.adminUid == request.auth.uid &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.locked == true &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.ownershipReleased == false)
+      );
+      allow delete: if false;
     }
 
     // Fixed-capacity Manager slots (slot_1 and slot_2 only -> hard limit of 2 Managers)
@@ -148,7 +239,7 @@ service cloud.firestore {
         !userAfterIsManager(resource.data.userId);
     }
 
-    // Users collection: strictly enforce 1 Admin (via admin_lock), max 2 Managers, unlimited Billing Staff
+    // Users collection: strictly enforce 1 Primary Admin (via admin_lock), max 2 Managers, unlimited Billing Staff
     match /users/{userId} {
       allow get: if isValidId(userId) && (isOwner(userId) || isAuthorizedAdmin());
       allow list: if isAuthorizedAdmin();
@@ -157,6 +248,15 @@ service cloud.firestore {
         (isOwner(userId) && !adminLockExists() &&
           existsAfter(/databases/$(database)/documents/system_config/admin_lock) &&
           getAfter(/databases/$(database)/documents/system_config/admin_lock).data.adminUid == request.auth.uid &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.locked == true &&
+          request.resource.data.role == 'admin' &&
+          request.resource.data.status == 'active') ||
+        // New Primary Admin registration after explicit ownership release (blocks existing staff/managers via !exists on create)
+        (isOwner(userId) && adminLockIsReleased() &&
+          request.auth.uid != adminLockDoc().data.adminUid &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.adminUid == request.auth.uid &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.locked == true &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.ownershipReleased == false &&
           request.resource.data.role == 'admin' &&
           request.resource.data.status == 'active') ||
         // Self-registration via Register Staff: strictly Billing Staff ONLY (never Admin or Manager)
@@ -183,6 +283,19 @@ service cloud.firestore {
             request.resource.data.role == 'billing' ||
             (request.resource.data.role == 'manager' && hasManagerSlotAfter(userId))
           )) ||
+        // Atomic revocation of previous Admin's privileges when new Primary Admin registers
+        (!isOwner(userId) &&
+          adminLockIsReleased() &&
+          adminLockDoc().data.adminUid == userId &&
+          resource.data.role == 'admin' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'status', 'updatedAt']) &&
+          request.resource.data.role == 'billing' &&
+          request.resource.data.status == 'inactive' &&
+          request.resource.data.updatedAt is string &&
+          request.resource.data.updatedAt.size() <= 64 &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.adminUid == request.auth.uid &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.locked == true &&
+          getAfter(/databases/$(database)/documents/system_config/admin_lock).data.ownershipReleased == false) ||
         // Non-admin staff updating own non-privilege fields only
         (isOwner(userId) && !isAuthorizedAdmin() &&
           request.resource.data.role == resource.data.role &&
