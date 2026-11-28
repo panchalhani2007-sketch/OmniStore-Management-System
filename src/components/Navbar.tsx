@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   Store, 
-  LogOut, 
   LogIn,
   UserCheck, 
   ShieldCheck, 
@@ -11,13 +10,11 @@ import {
   Bell,
   AlertTriangle,
   CheckCircle2,
-  X,
-  Download
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import { ROLE_PERMISSIONS, UserRole, StoreTab } from '../types/store';
-import { downloadLiveDatabaseJson } from '../utils/exportDatabase';
 
 interface NavbarProps {
   currentTab: StoreTab;
@@ -32,22 +29,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   mobileMenuOpen,
   setMobileMenuOpen,
 }) => {
-  const { user, profile, role, isAuthorizedAdmin, simulatedRole, setSimulatedRole, signOut, releaseAdminOwnership, openLoginPage } = useAuth();
-  const {
-    products,
-    categories,
-    stockLogs,
-    employees,
-    sales,
-    returns,
-    customers,
-    settings,
-    syncTimestamp
-  } = useStore();
+  const { user, profile, role, isAuthorizedAdmin, simulatedRole, setSimulatedRole, openLoginPage } = useAuth();
+  const { products, categories, settings, syncTimestamp } = useStore();
 
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [alertDropdownOpen, setAlertDropdownOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
   const alertContainerRef = useRef<HTMLDivElement>(null);
   const roleContainerRef = useRef<HTMLDivElement>(null);
 
@@ -351,31 +337,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           )}
 
-          {/* Export Live Database JSON (Admin only) */}
-          {isAuthorizedAdmin && role === 'admin' && (
-            <button
-              type="button"
-              onClick={() =>
-                downloadLiveDatabaseJson({
-                  products,
-                  categories,
-                  stockLogs,
-                  employees,
-                  sales,
-                  returns,
-                  customers,
-                  settings
-                })
-              }
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-emerald-600/20 text-slate-200 hover:text-emerald-300 border border-slate-700/80 hover:border-emerald-500/40 text-xs font-semibold transition whitespace-nowrap"
-              title="Download OmniStore_Database.json from live Firestore"
-              aria-label="Export Database JSON"
-            >
-              <Download className="w-4 h-4 text-emerald-400" />
-              <span className="hidden xl:inline">Export DB JSON</span>
-            </button>
-          )}
-
           {/* Go to Login Page (Admin only - keeps Firebase session & Admin role active) */}
           {isAuthorizedAdmin && (
             <button
@@ -390,9 +351,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* User Profile & Sign Out */}
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
-            <div className="hidden lg:block text-right">
+          {/* User Profile */}
+          <div className="hidden lg:flex items-center gap-2 pl-2 border-l border-slate-800">
+            <div className="text-right">
               <p className="text-xs font-semibold text-white leading-tight">
                 {profile?.name || user?.displayName || user?.email?.split('@')[0] || 'Staff'}
               </p>
@@ -400,30 +361,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {user?.email || 'Authenticated'}
               </p>
             </div>
-            <button
-              type="button"
-              disabled={loggingOut}
-              onClick={async () => {
-                try {
-                  setLoggingOut(true);
-                  if (isAuthorizedAdmin) {
-                    await releaseAdminOwnership();
-                  } else {
-                    await signOut();
-                  }
-                } catch (err) {
-                  console.error('Logout error:', err);
-                } finally {
-                  setLoggingOut(false);
-                }
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-200 hover:text-rose-400 border border-slate-700/80 text-xs font-semibold transition disabled:opacity-50"
-              title={isAuthorizedAdmin ? 'Logout & Release Primary Admin Role' : 'Logout'}
-              aria-label="Logout"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>{loggingOut ? 'Logging out...' : 'Logout'}</span>
-            </button>
           </div>
         </div>
       </div>

@@ -10,7 +10,6 @@ import {
   Edit,
   Trash2,
   Power,
-  LogOut,
   LogIn,
   KeyRound
 } from 'lucide-react';
@@ -356,7 +355,7 @@ export const EmployeesView: React.FC = () => {
             <h3 className="font-bold text-white text-sm">Primary Admin Session &amp; Change Admin</h3>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed max-w-2xl">
-            Signed in as Primary Admin <strong className="text-slate-200">{profile?.name || user?.email}</strong> ({user?.email}). Clicking <strong className="text-slate-200">Logout</strong> releases your Primary Admin role, signs you out, and opens the New Admin Registration form while preserving all store records.
+            Signed in as Primary Admin <strong className="text-slate-200">{profile?.name || user?.email}</strong> ({user?.email}). Clicking <strong className="text-slate-200">Change Admin</strong> releases your Primary Admin role, signs you out, and opens the New Admin Registration form while preserving all store records.
           </p>
         </div>
 
@@ -375,8 +374,8 @@ export const EmployeesView: React.FC = () => {
             onClick={handleConfirmReleaseOwnership}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600/15 hover:bg-rose-600/25 text-rose-300 border border-rose-500/30 text-xs font-semibold transition disabled:opacity-50"
           >
-            <LogOut className="w-4 h-4 text-rose-400" />
-            <span>{isReleasingOwnership ? 'Logging out...' : 'Logout'}</span>
+            <KeyRound className="w-4 h-4 text-rose-400" />
+            <span>{isReleasingOwnership ? 'Releasing Role...' : 'Change Admin'}</span>
           </button>
         </div>
       </div>

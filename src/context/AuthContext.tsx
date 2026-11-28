@@ -40,6 +40,7 @@ interface AuthContextType {
   simulatedRole: UserRole | null;
   setSimulatedRole: (role: UserRole | null) => void;
   loading: boolean;
+  authTransitioning: boolean;
   isAccountDisabled: boolean;
   isUnauthorizedAccount: boolean;
   registerFirstAdmin: (email: string, pass: string, name: string) => Promise<void>;
@@ -71,6 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [adminClaimedAt, setAdminClaimedAt] = useState<string | null>(null);
   const [simulatedRole, setSimulatedRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [authTransitioning, setAuthTransitioning] = useState<boolean>(false);
   const [isUnauthorizedAccount, setIsUnauthorizedAccount] = useState<boolean>(false);
   const [viewingLoginPage, setViewingLoginPage] = useState<boolean>(false);
 
@@ -121,8 +123,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (snap.exists()) {
           const snapData = { id: snap.id, ...snap.data() } as UserProfile;
           if (lockAdminVerified) {
-            setProfile({ ...snapData, role: 'admin', status: 'active' });
-            setIsUnauthorizedAccount(false);
+            if (snapData.role === 'admin') {
+              setProfile({ ...snapData, role: 'admin', status: 'active' });
+              setIsUnauthorizedAccount(false);
+            } else {
+              setIsLockAdmin(false);
+              if ((snapData.role as string) !== 'manager' && (snapData.role as string) !== 'billing') {
+                setProfile(null);
+                setIsUnauthorizedAccount(true);
+              } else {
+                setProfile(snapData);
+                setIsUnauthorizedAccount(false);
+              }
+            }
           } else if ((snapData.role as string) !== 'manager' && (snapData.role as string) !== 'billing') {
             setProfile(null);
             setIsUnauthorizedAccount(true);
@@ -434,6 +447,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const now = new Date().toISOString();
+    setAuthTransitioning(true);
+    clearProfileListener();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
     try {
       await runTransaction(db, async (tx) => {
         const lockRef = doc(db, 'system_config', 'admin_lock');
@@ -481,6 +498,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAdminOwnershipReleased(true);
       await signOut();
     } catch (err) {
+      setAuthTransitioning(false);
       if (err instanceof Error && (err.message.includes('Primary Admin') || err.message.includes('lock record'))) {
         throw err;
       }
@@ -608,12 +626,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithEmail = async (email: string, pass: string, expectedRole: UserRole) => {
     verifyingLoginRef.current = true;
+    setAuthTransitioning(true);
+    clearProfileListener();
+    if (auth.currentUser) {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+
     try {
       const cred = await signInWithEmailAndPassword(auth, email, pass);
       const resolved = await resolveAuthorizedProfile(cred.user);
 
       if (!resolved) {
         await fbSignOut(auth);
+        setUser(null);
+        setProfile(null);
+        setIsLockAdmin(false);
+        setSimulatedRole(null);
+        setViewingLoginPage(false);
         if (expectedRole === 'admin' && adminOwnershipReleased) {
           throw new Error(
             'Admin ownership has been released and is awaiting a new Primary Admin registration.'
@@ -624,11 +653,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (resolved.profile.status === 'inactive' && !resolved.isLockAdmin) {
         await fbSignOut(auth);
+        setUser(null);
+        setProfile(null);
+        setIsLockAdmin(false);
+        setSimulatedRole(null);
+        setViewingLoginPage(false);
         throw new Error('Your staff account has been deactivated by the Store Administrator.');
       }
 
       if (resolved.profile.role !== expectedRole) {
         await fbSignOut(auth);
+        setUser(null);
+        setProfile(null);
+        setIsLockAdmin(false);
+        setSimulatedRole(null);
+        setViewingLoginPage(false);
         throw new Error(
           `Role mismatch: Your account is registered as "${ROLE_PERMISSIONS[resolved.profile.role].name}", not "${ROLE_PERMISSIONS[expectedRole].name}". Please select "${ROLE_PERMISSIONS[resolved.profile.role].name}" to log in.`
         );
@@ -637,11 +676,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(cred.user);
       setProfile(resolved.profile);
       setIsLockAdmin(resolved.isLockAdmin);
+      setSimulatedRole(null);
       setIsUnauthorizedAccount(false);
       setViewingLoginPage(false);
       attachProfileListener(cred.user.uid, resolved.isLockAdmin);
       setLoading(false);
     } finally {
+      setAuthTransitioning(false);
       verifyingLoginRef.current = false;
     }
   };
@@ -714,12 +755,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    await fbSignOut(auth);
+    setAuthTransitioning(true);
+    clearProfileListener();
+    setUser(null);
     setProfile(null);
     setIsLockAdmin(false);
     setSimulatedRole(null);
     setIsUnauthorizedAccount(false);
     setViewingLoginPage(false);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    try {
+      await fbSignOut(auth);
+    } finally {
+      setAuthTransitioning(false);
+    }
   };
 
   // Navigate to the Login Page while keeping Firebase Auth session and Primary Admin role active
@@ -904,6 +953,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         simulatedRole,
         setSimulatedRole,
         loading,
+        authTransitioning,
         isAccountDisabled,
         isUnauthorizedAccount,
         registerFirstAdmin,

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   LayoutDashboard, 
   ShoppingCart, 
@@ -10,6 +10,7 @@ import {
   Tags, 
   UserCog, 
   AlertTriangle,
+  LogOut,
   X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -36,8 +37,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mobileMenuOpen,
   setMobileMenuOpen
 }) => {
-  const { role } = useAuth();
+  const { role, signOut } = useAuth();
   const { products } = useStore();
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const roleInfo = ROLE_PERMISSIONS[role];
   const allowedTabs = roleInfo.allowedTabs;
@@ -152,6 +154,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </p>
           </div>
         )}
+
+        {/* Logout Option (Shared across Admin, Manager, and Billing Staff) */}
+        <div className="p-3 border-t border-slate-800/80 mt-auto">
+          <button
+            type="button"
+            disabled={loggingOut}
+            onClick={async () => {
+              try {
+                setLoggingOut(true);
+                setMobileMenuOpen(false);
+                await signOut();
+              } catch (err) {
+                console.error('Logout error:', err);
+              } finally {
+                setLoggingOut(false);
+              }
+            }}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all disabled:opacity-50"
+            aria-label="Logout"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span>{loggingOut ? 'Logging out...' : 'Logout'}</span>
+          </button>
+        </div>
       </aside>
     </>
   );

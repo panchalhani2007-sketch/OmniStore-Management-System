@@ -13,7 +13,7 @@ import {
   increment,
   runTransaction
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { auth, db } from '../firebase/config';
 import { useAuth } from './AuthContext';
 import { 
   Product, 
@@ -77,7 +77,7 @@ const defaultSettings: StoreSettings = {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const { user, profile, role, isAuthorizedAdmin, loading: authLoading, isUnauthorizedAccount, isAccountDisabled } = useAuth();
+  const { user, profile, role, isAuthorizedAdmin, loading: authLoading, authTransitioning, isUnauthorizedAccount, isAccountDisabled } = useAuth();
   const canManageSettingsRef = React.useRef(false);
   canManageSettingsRef.current = isAuthorizedAdmin;
 
@@ -95,11 +95,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // Set up real-time listeners only when user is authenticated and role is resolved
   useEffect(() => {
-    if (authLoading) {
-      return;
-    }
-
-    if (!user || !profile || isUnauthorizedAccount || isAccountDisabled) {
+    if (authLoading || !user || !profile || isUnauthorizedAccount || isAccountDisabled || authTransitioning) {
       setProducts([]);
       setCategories([]);
       setCustomers([]);
@@ -107,11 +103,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setReturns([]);
       setStockLogs([]);
       setEmployees([]);
-      setLoading(false);
+      setSettings(defaultSettings);
+      setSyncTimestamp(null);
+      if (!authLoading) {
+        setLoading(false);
+      }
       return;
     }
 
     setLoading(true);
+
+    const handleListenerError = (error: unknown, path: string) => {
+      if (!auth.currentUser || auth.currentUser.uid !== user.uid) {
+        return;
+      }
+      handleFirestoreError(error, OperationType.GET, path);
+    };
 
     // Products listener
     const unsubProducts = onSnapshot(
@@ -121,7 +128,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setProducts(list);
         setSyncTimestamp(new Date());
       },
-      (error) => handleFirestoreError(error, OperationType.GET, 'products')
+      (error) => handleListenerError(error, 'products')
     );
 
     // Categories listener
@@ -131,7 +138,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
         setCategories(list);
       },
-      (error) => handleFirestoreError(error, OperationType.GET, 'categories')
+      (error) => handleListenerError(error, 'categories')
     );
 
     const canReadCustomersAndSales =
@@ -146,7 +153,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
             setCustomers(list);
           },
-          (error) => handleFirestoreError(error, OperationType.GET, 'customers')
+          (error) => handleListenerError(error, 'customers')
         )
       : (() => {
           setCustomers([]);
@@ -161,7 +168,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale));
             setSales(list);
           },
-          (error) => handleFirestoreError(error, OperationType.GET, 'sales')
+          (error) => handleListenerError(error, 'sales')
         )
       : (() => {
           setSales([]);
@@ -176,7 +183,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Return));
             setReturns(list);
           },
-          (error) => handleFirestoreError(error, OperationType.GET, 'returns')
+          (error) => handleListenerError(error, 'returns')
         )
       : (() => {
           setReturns([]);
@@ -194,7 +201,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockLog));
             setStockLogs(list);
           },
-          (error) => handleFirestoreError(error, OperationType.GET, 'stock_logs')
+          (error) => handleListenerError(error, 'stock_logs')
         )
       : (() => {
           setStockLogs([]);
@@ -209,7 +216,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UserProfile));
             setEmployees(list);
           },
-          (error) => handleFirestoreError(error, OperationType.GET, 'users')
+          (error) => handleListenerError(error, 'users')
         )
       : (() => {
           setEmployees([]);
@@ -234,7 +241,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           }
         }
       },
-      (error) => handleFirestoreError(error, OperationType.GET, 'store_settings/general')
+      (error) => handleListenerError(error, 'store_settings/general')
     );
 
     setLoading(false);
@@ -249,7 +256,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       unsubEmployees();
       unsubSettings();
     };
-  }, [user, profile, role, isAuthorizedAdmin, authLoading, isUnauthorizedAccount, isAccountDisabled]);
+  }, [user, profile, role, isAuthorizedAdmin, authLoading, authTransitioning, isUnauthorizedAccount, isAccountDisabled]);
 
   // Product CRUD
   const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
